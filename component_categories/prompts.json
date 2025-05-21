@@ -1,0 +1,103 @@
+{
+  "Prompt": {
+    "template": {
+      "_type": "Component",
+      "code": {
+        "type": "code",
+        "required": true,
+        "placeholder": "",
+        "list": false,
+        "show": true,
+        "multiline": true,
+        "value": "from langflow.base.prompts.api_utils import process_prompt_template\nfrom langflow.custom import Component\nfrom langflow.inputs.inputs import DefaultPromptField\nfrom langflow.io import MessageTextInput, Output, PromptInput\nfrom langflow.schema.message import Message\nfrom langflow.template.utils import update_template_values\n\n\nclass PromptComponent(Component):\n    display_name: str = \"Prompt\"\n    description: str = \"Create a prompt template with dynamic variables.\"\n    icon = \"prompts\"\n    trace_type = \"prompt\"\n    name = \"Prompt\"\n\n    inputs = [\n        PromptInput(name=\"template\", display_name=\"Template\"),\n        MessageTextInput(\n            name=\"tool_placeholder\",\n            display_name=\"Tool Placeholder\",\n            tool_mode=True,\n            advanced=True,\n            info=\"A placeholder input for tool mode.\",\n        ),\n    ]\n\n    outputs = [\n        Output(display_name=\"Prompt Message\", name=\"prompt\", method=\"build_prompt\"),\n    ]\n\n    async def build_prompt(self) -> Message:\n        prompt = Message.from_template(**self._attributes)\n        self.status = prompt.text\n        return prompt\n\n    def _update_template(self, frontend_node: dict):\n        prompt_template = frontend_node[\"template\"][\"template\"][\"value\"]\n        custom_fields = frontend_node[\"custom_fields\"]\n        frontend_node_template = frontend_node[\"template\"]\n        _ = process_prompt_template(\n            template=prompt_template,\n            name=\"template\",\n            custom_fields=custom_fields,\n            frontend_node_template=frontend_node_template,\n        )\n        return frontend_node\n\n    async def update_frontend_node(self, new_frontend_node: dict, current_frontend_node: dict):\n        \"\"\"This function is called after the code validation is done.\"\"\"\n        frontend_node = await super().update_frontend_node(new_frontend_node, current_frontend_node)\n        template = frontend_node[\"template\"][\"template\"][\"value\"]\n        # Kept it duplicated for backwards compatibility\n        _ = process_prompt_template(\n            template=template,\n            name=\"template\",\n            custom_fields=frontend_node[\"custom_fields\"],\n            frontend_node_template=frontend_node[\"template\"],\n        )\n        # Now that template is updated, we need to grab any values that were set in the current_frontend_node\n        # and update the frontend_node with those values\n        update_template_values(new_template=frontend_node, previous_template=current_frontend_node[\"template\"])\n        return frontend_node\n\n    def _get_fallback_input(self, **kwargs):\n        return DefaultPromptField(**kwargs)\n",
+        "fileTypes": [],
+        "file_path": "",
+        "password": false,
+        "name": "code",
+        "advanced": true,
+        "dynamic": true,
+        "info": "",
+        "load_from_db": false,
+        "title_case": false
+      },
+      "template": {
+        "tool_mode": false,
+        "trace_as_input": true,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "template",
+        "value": "",
+        "display_name": "Template",
+        "advanced": false,
+        "dynamic": false,
+        "info": "",
+        "title_case": false,
+        "type": "prompt",
+        "_input_type": "PromptInput"
+      },
+      "tool_placeholder": {
+        "tool_mode": true,
+        "trace_as_input": true,
+        "trace_as_metadata": true,
+        "load_from_db": false,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "tool_placeholder",
+        "value": "",
+        "display_name": "Tool Placeholder",
+        "advanced": true,
+        "input_types": [
+          "Message"
+        ],
+        "dynamic": false,
+        "info": "A placeholder input for tool mode.",
+        "title_case": false,
+        "type": "str",
+        "_input_type": "MessageTextInput"
+      }
+    },
+    "description": "Create a prompt template with dynamic variables.",
+    "icon": "prompts",
+    "base_classes": [
+      "Message"
+    ],
+    "display_name": "Prompt",
+    "documentation": "",
+    "minimized": false,
+    "custom_fields": {},
+    "output_types": [],
+    "pinned": false,
+    "conditional_paths": [],
+    "frozen": false,
+    "outputs": [
+      {
+        "types": [
+          "Message"
+        ],
+        "selected": "Message",
+        "name": "prompt",
+        "display_name": "Prompt Message",
+        "method": "build_prompt",
+        "value": "__UNDEFINED__",
+        "cache": true,
+        "allows_loop": false,
+        "tool_mode": true
+      }
+    ],
+    "field_order": [
+      "template",
+      "tool_placeholder"
+    ],
+    "beta": false,
+    "legacy": false,
+    "edited": false,
+    "metadata": {},
+    "tool_mode": false
+  }
+}

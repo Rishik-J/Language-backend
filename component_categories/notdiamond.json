@@ -1,0 +1,229 @@
+{
+  "NotDiamond": {
+    "template": {
+      "_type": "Component",
+      "models": {
+        "trace_as_metadata": true,
+        "list": true,
+        "list_add_label": "Add More",
+        "required": true,
+        "placeholder": "",
+        "show": true,
+        "name": "models",
+        "value": "",
+        "display_name": "Language Models",
+        "advanced": false,
+        "input_types": [
+          "LanguageModel"
+        ],
+        "dynamic": false,
+        "info": "Link the models you want to route between.",
+        "title_case": false,
+        "type": "other",
+        "_input_type": "HandleInput"
+      },
+      "api_key": {
+        "load_from_db": true,
+        "required": true,
+        "placeholder": "",
+        "show": true,
+        "name": "api_key",
+        "value": "NOTDIAMOND_API_KEY",
+        "display_name": "Not Diamond API Key",
+        "advanced": false,
+        "input_types": [],
+        "dynamic": false,
+        "info": "The Not Diamond API Key to use for routing.",
+        "title_case": false,
+        "password": true,
+        "type": "str",
+        "_input_type": "SecretStrInput"
+      },
+      "code": {
+        "type": "code",
+        "required": true,
+        "placeholder": "",
+        "list": false,
+        "show": true,
+        "multiline": true,
+        "value": "import warnings\n\nimport requests\nfrom langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage\nfrom pydantic.v1 import SecretStr\n\nfrom langflow.base.models.chat_result import get_chat_result\nfrom langflow.base.models.model_utils import get_model_name\nfrom langflow.custom.custom_component.component import Component\nfrom langflow.io import (\n    BoolInput,\n    DropdownInput,\n    HandleInput,\n    MessageInput,\n    MessageTextInput,\n    Output,\n    SecretStrInput,\n    StrInput,\n)\nfrom langflow.schema.message import Message\n\nND_MODEL_MAPPING = {\n    \"gpt-4o\": {\"provider\": \"openai\", \"model\": \"gpt-4o\"},\n    \"gpt-4o-mini\": {\"provider\": \"openai\", \"model\": \"gpt-4o-mini\"},\n    \"gpt-4-turbo\": {\"provider\": \"openai\", \"model\": \"gpt-4-turbo-2024-04-09\"},\n    \"claude-3-5-haiku-20241022\": {\"provider\": \"anthropic\", \"model\": \"claude-3-5-haiku-20241022\"},\n    \"claude-3-5-sonnet-20241022\": {\"provider\": \"anthropic\", \"model\": \"claude-3-5-sonnet-20241022\"},\n    \"anthropic.claude-3-5-sonnet-20241022-v2:0\": {\"provider\": \"anthropic\", \"model\": \"claude-3-5-sonnet-20241022\"},\n    \"anthropic.claude-3-5-haiku-20241022-v1:0\": {\"provider\": \"anthropic\", \"model\": \"claude-3-5-haiku-20241022\"},\n    \"gemini-1.5-pro\": {\"provider\": \"google\", \"model\": \"gemini-1.5-pro-latest\"},\n    \"gemini-1.5-flash\": {\"provider\": \"google\", \"model\": \"gemini-1.5-flash-latest\"},\n    \"llama-3.1-sonar-large-128k-online\": {\"provider\": \"perplexity\", \"model\": \"llama-3.1-sonar-large-128k-online\"},\n    \"meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo\": {\n        \"provider\": \"togetherai\",\n        \"model\": \"Meta-Llama-3.1-70B-Instruct-Turbo\",\n    },\n    \"meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo\": {\n        \"provider\": \"togetherai\",\n        \"model\": \"Meta-Llama-3.1-405B-Instruct-Turbo\",\n    },\n    \"mistral-large-latest\": {\"provider\": \"mistral\", \"model\": \"mistral-large-2407\"},\n}\n\n\nclass NotDiamondComponent(Component):\n    display_name = \"Not Diamond Router\"\n    description = \"Call the right model at the right time with the world's most powerful AI model router.\"\n    documentation: str = \"https://docs.notdiamond.ai/\"\n    icon = \"NotDiamond\"\n    name = \"NotDiamond\"\n\n    def __init__(self, *args, **kwargs):\n        super().__init__(*args, **kwargs)\n        self._selected_model_name = None\n\n    inputs = [\n        MessageInput(name=\"input_value\", display_name=\"Input\", required=True),\n        MessageTextInput(\n            name=\"system_message\",\n            display_name=\"System Message\",\n            info=\"System message to pass to the model.\",\n            advanced=False,\n        ),\n        HandleInput(\n            name=\"models\",\n            display_name=\"Language Models\",\n            input_types=[\"LanguageModel\"],\n            required=True,\n            is_list=True,\n            info=\"Link the models you want to route between.\",\n        ),\n        SecretStrInput(\n            name=\"api_key\",\n            display_name=\"Not Diamond API Key\",\n            info=\"The Not Diamond API Key to use for routing.\",\n            advanced=False,\n            value=\"NOTDIAMOND_API_KEY\",\n            required=True,\n        ),\n        StrInput(\n            name=\"preference_id\",\n            display_name=\"Preference ID\",\n            info=\"The ID of the router preference that was configured via the Dashboard.\",\n            advanced=False,\n        ),\n        DropdownInput(\n            name=\"tradeoff\",\n            display_name=\"Tradeoff\",\n            info=\"The tradeoff between cost and latency for the router to determine the best LLM for a given query.\",\n            advanced=False,\n            options=[\"quality\", \"cost\", \"latency\"],\n            value=\"quality\",\n        ),\n        BoolInput(\n            name=\"hash_content\",\n            display_name=\"Hash Content\",\n            info=\"Whether to hash the content before being sent to the NotDiamond API.\",\n            advanced=False,\n            value=False,\n        ),\n    ]\n\n    outputs = [\n        Output(display_name=\"Output\", name=\"output\", method=\"model_select\"),\n        Output(\n            display_name=\"Selected Model\",\n            name=\"selected_model\",\n            method=\"get_selected_model\",\n            required_inputs=[\"output\"],\n        ),\n    ]\n\n    def get_selected_model(self) -> str:\n        return self._selected_model_name\n\n    def model_select(self) -> Message:\n        api_key = SecretStr(self.api_key).get_secret_value() if self.api_key else None\n        input_value = self.input_value\n        system_message = self.system_message\n        messages = self._format_input(input_value, system_message)\n\n        selected_models = []\n        mapped_selected_models = []\n        for model in self.models:\n            model_name = get_model_name(model)\n\n            if model_name in ND_MODEL_MAPPING:\n                selected_models.append(model)\n                mapped_selected_models.append(ND_MODEL_MAPPING[model_name])\n\n        payload = {\n            \"messages\": messages,\n            \"llm_providers\": mapped_selected_models,\n            \"hash_content\": self.hash_content,\n        }\n\n        if self.tradeoff != \"quality\":\n            payload[\"tradeoff\"] = self.tradeoff\n\n        if self.preference_id and self.preference_id != \"\":\n            payload[\"preference_id\"] = self.preference_id\n\n        header = {\n            \"Authorization\": f\"Bearer {api_key}\",\n            \"accept\": \"application/json\",\n            \"content-type\": \"application/json\",\n        }\n\n        response = requests.post(\n            \"https://api.notdiamond.ai/v2/modelRouter/modelSelect\",\n            json=payload,\n            headers=header,\n            timeout=10,\n        )\n\n        result = response.json()\n        chosen_model = self.models[0]  # By default there is a fallback model\n        self._selected_model_name = get_model_name(chosen_model)\n\n        if \"providers\" not in result:\n            # No provider returned by NotDiamond API, likely failed. Fallback to first model.\n            return self._call_get_chat_result(chosen_model, input_value, system_message)\n\n        providers = result[\"providers\"]\n\n        if len(providers) == 0:\n            # No provider returned by NotDiamond API, likely failed. Fallback to first model.\n            return self._call_get_chat_result(chosen_model, input_value, system_message)\n\n        nd_result = providers[0]\n\n        for nd_model, selected_model in zip(mapped_selected_models, selected_models, strict=False):\n            if nd_model[\"provider\"] == nd_result[\"provider\"] and nd_model[\"model\"] == nd_result[\"model\"]:\n                chosen_model = selected_model\n                self._selected_model_name = get_model_name(chosen_model)\n                break\n\n        return self._call_get_chat_result(chosen_model, input_value, system_message)\n\n    def _call_get_chat_result(self, chosen_model, input_value, system_message):\n        return get_chat_result(\n            runnable=chosen_model,\n            input_value=input_value,\n            system_message=system_message,\n        )\n\n    def _format_input(\n        self,\n        input_value: str | Message,\n        system_message: str | None = None,\n    ):\n        messages: list[BaseMessage] = []\n        if not input_value and not system_message:\n            msg = \"The message you want to send to the router is empty.\"\n            raise ValueError(msg)\n        system_message_added = False\n        if input_value:\n            if isinstance(input_value, Message):\n                with warnings.catch_warnings():\n                    warnings.simplefilter(\"ignore\")\n                    if \"prompt\" in input_value:\n                        prompt = input_value.load_lc_prompt()\n                        if system_message:\n                            prompt.messages = [\n                                SystemMessage(content=system_message),\n                                *prompt.messages,  # type: ignore[has-type]\n                            ]\n                            system_message_added = True\n                        messages.extend(prompt.messages)\n                    else:\n                        messages.append(input_value.to_lc_message())\n            else:\n                messages.append(HumanMessage(content=input_value))\n\n        if system_message and not system_message_added:\n            messages.insert(0, SystemMessage(content=system_message))\n\n        # Convert Langchain messages to OpenAI format\n        openai_messages = []\n        for msg in messages:\n            if isinstance(msg, HumanMessage):\n                openai_messages.append({\"role\": \"user\", \"content\": msg.content})\n            elif isinstance(msg, AIMessage):\n                openai_messages.append({\"role\": \"assistant\", \"content\": msg.content})\n            elif isinstance(msg, SystemMessage):\n                openai_messages.append({\"role\": \"system\", \"content\": msg.content})\n\n        return openai_messages\n",
+        "fileTypes": [],
+        "file_path": "",
+        "password": false,
+        "name": "code",
+        "advanced": true,
+        "dynamic": true,
+        "info": "",
+        "load_from_db": false,
+        "title_case": false
+      },
+      "hash_content": {
+        "tool_mode": false,
+        "trace_as_metadata": true,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "hash_content",
+        "value": false,
+        "display_name": "Hash Content",
+        "advanced": false,
+        "dynamic": false,
+        "info": "Whether to hash the content before being sent to the NotDiamond API.",
+        "title_case": false,
+        "type": "bool",
+        "_input_type": "BoolInput"
+      },
+      "input_value": {
+        "trace_as_input": true,
+        "tool_mode": false,
+        "trace_as_metadata": true,
+        "load_from_db": false,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": true,
+        "placeholder": "",
+        "show": true,
+        "name": "input_value",
+        "value": "",
+        "display_name": "Input",
+        "advanced": false,
+        "input_types": [
+          "Message"
+        ],
+        "dynamic": false,
+        "info": "",
+        "title_case": false,
+        "type": "str",
+        "_input_type": "MessageInput"
+      },
+      "preference_id": {
+        "tool_mode": false,
+        "trace_as_metadata": true,
+        "load_from_db": false,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "preference_id",
+        "value": "",
+        "display_name": "Preference ID",
+        "advanced": false,
+        "dynamic": false,
+        "info": "The ID of the router preference that was configured via the Dashboard.",
+        "title_case": false,
+        "type": "str",
+        "_input_type": "StrInput"
+      },
+      "system_message": {
+        "tool_mode": false,
+        "trace_as_input": true,
+        "trace_as_metadata": true,
+        "load_from_db": false,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "system_message",
+        "value": "",
+        "display_name": "System Message",
+        "advanced": false,
+        "input_types": [
+          "Message"
+        ],
+        "dynamic": false,
+        "info": "System message to pass to the model.",
+        "title_case": false,
+        "type": "str",
+        "_input_type": "MessageTextInput"
+      },
+      "tradeoff": {
+        "tool_mode": false,
+        "trace_as_metadata": true,
+        "options": [
+          "quality",
+          "cost",
+          "latency"
+        ],
+        "options_metadata": [],
+        "combobox": false,
+        "dialog_inputs": {},
+        "toggle": false,
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "tradeoff",
+        "value": "quality",
+        "display_name": "Tradeoff",
+        "advanced": false,
+        "dynamic": false,
+        "info": "The tradeoff between cost and latency for the router to determine the best LLM for a given query.",
+        "title_case": false,
+        "type": "str",
+        "_input_type": "DropdownInput"
+      }
+    },
+    "description": "Call the right model at the right time with the world's most powerful AI model router.",
+    "icon": "NotDiamond",
+    "base_classes": [
+      "Message",
+      "Text"
+    ],
+    "display_name": "Not Diamond Router",
+    "documentation": "https://docs.notdiamond.ai/",
+    "minimized": false,
+    "custom_fields": {},
+    "output_types": [],
+    "pinned": false,
+    "conditional_paths": [],
+    "frozen": false,
+    "outputs": [
+      {
+        "types": [
+          "Message"
+        ],
+        "selected": "Message",
+        "name": "output",
+        "display_name": "Output",
+        "method": "model_select",
+        "value": "__UNDEFINED__",
+        "cache": true,
+        "allows_loop": false,
+        "tool_mode": true
+      },
+      {
+        "types": [
+          "Text"
+        ],
+        "selected": "Text",
+        "name": "selected_model",
+        "display_name": "Selected Model",
+        "method": "get_selected_model",
+        "value": "__UNDEFINED__",
+        "cache": true,
+        "required_inputs": [
+          "output"
+        ],
+        "allows_loop": false,
+        "tool_mode": true
+      }
+    ],
+    "field_order": [
+      "input_value",
+      "system_message",
+      "models",
+      "api_key",
+      "preference_id",
+      "tradeoff",
+      "hash_content"
+    ],
+    "beta": false,
+    "legacy": false,
+    "edited": false,
+    "metadata": {},
+    "tool_mode": false
+  }
+}

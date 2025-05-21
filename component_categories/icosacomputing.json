@@ -1,0 +1,187 @@
+{
+  "Combinatorial Reasoner": {
+    "template": {
+      "_type": "Component",
+      "code": {
+        "type": "code",
+        "required": true,
+        "placeholder": "",
+        "list": false,
+        "show": true,
+        "multiline": true,
+        "value": "import requests\nfrom requests.auth import HTTPBasicAuth\n\nfrom langflow.base.models.openai_constants import OPENAI_MODEL_NAMES\nfrom langflow.custom import Component\nfrom langflow.inputs import DropdownInput, SecretStrInput, StrInput\nfrom langflow.io import MessageTextInput, Output\nfrom langflow.schema import Data\nfrom langflow.schema.message import Message\n\n\nclass CombinatorialReasonerComponent(Component):\n    display_name = \"Combinatorial Reasoner\"\n    description = \"Uses Combinatorial Optimization to construct an optimal prompt with embedded reasons. Sign up here:\\nhttps://forms.gle/oWNv2NKjBNaqqvCx6\"\n    icon = \"Icosa\"\n    name = \"Combinatorial Reasoner\"\n\n    inputs = [\n        MessageTextInput(name=\"prompt\", display_name=\"Prompt\", required=True),\n        SecretStrInput(\n            name=\"openai_api_key\",\n            display_name=\"OpenAI API Key\",\n            info=\"The OpenAI API Key to use for the OpenAI model.\",\n            advanced=False,\n            value=\"OPENAI_API_KEY\",\n            required=True,\n        ),\n        StrInput(\n            name=\"username\",\n            display_name=\"Username\",\n            info=\"Username to authenticate access to Icosa CR API\",\n            advanced=False,\n            required=True,\n        ),\n        SecretStrInput(\n            name=\"password\",\n            display_name=\"Password\",\n            info=\"Password to authenticate access to Icosa CR API.\",\n            advanced=False,\n            required=True,\n        ),\n        DropdownInput(\n            name=\"model_name\",\n            display_name=\"Model Name\",\n            advanced=False,\n            options=OPENAI_MODEL_NAMES,\n            value=OPENAI_MODEL_NAMES[0],\n        ),\n    ]\n\n    outputs = [\n        Output(\n            display_name=\"Optimized Prompt\",\n            name=\"optimized_prompt\",\n            method=\"build_prompt\",\n        ),\n        Output(display_name=\"Selected Reasons\", name=\"reasons\", method=\"build_reasons\"),\n    ]\n\n    def build_prompt(self) -> Message:\n        params = {\n            \"prompt\": self.prompt,\n            \"apiKey\": self.openai_api_key,\n            \"model\": self.model_name,\n        }\n\n        creds = HTTPBasicAuth(self.username, password=self.password)\n        response = requests.post(\n            \"https://cr-api.icosacomputing.com/cr/langflow\",\n            json=params,\n            auth=creds,\n            timeout=100,\n        )\n        response.raise_for_status()\n\n        prompt = response.json()[\"prompt\"]\n\n        self.reasons = response.json()[\"finalReasons\"]\n        return prompt\n\n    def build_reasons(self) -> Data:\n        # list of selected reasons\n        final_reasons = [reason[0] for reason in self.reasons]\n        return Data(value=final_reasons)\n",
+        "fileTypes": [],
+        "file_path": "",
+        "password": false,
+        "name": "code",
+        "advanced": true,
+        "dynamic": true,
+        "info": "",
+        "load_from_db": false,
+        "title_case": false
+      },
+      "model_name": {
+        "tool_mode": false,
+        "trace_as_metadata": true,
+        "options": [
+          "gpt-4o-mini",
+          "gpt-4o",
+          "gpt-4.1",
+          "gpt-4.1-mini",
+          "gpt-4.1-nano",
+          "gpt-4.5-preview",
+          "gpt-4-turbo",
+          "gpt-4-turbo-preview",
+          "gpt-4",
+          "gpt-3.5-turbo"
+        ],
+        "options_metadata": [],
+        "combobox": false,
+        "dialog_inputs": {},
+        "toggle": false,
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "model_name",
+        "value": "gpt-4o-mini",
+        "display_name": "Model Name",
+        "advanced": false,
+        "dynamic": false,
+        "info": "",
+        "title_case": false,
+        "type": "str",
+        "_input_type": "DropdownInput"
+      },
+      "openai_api_key": {
+        "load_from_db": true,
+        "required": true,
+        "placeholder": "",
+        "show": true,
+        "name": "openai_api_key",
+        "value": "OPENAI_API_KEY",
+        "display_name": "OpenAI API Key",
+        "advanced": false,
+        "input_types": [],
+        "dynamic": false,
+        "info": "The OpenAI API Key to use for the OpenAI model.",
+        "title_case": false,
+        "password": true,
+        "type": "str",
+        "_input_type": "SecretStrInput"
+      },
+      "password": {
+        "load_from_db": true,
+        "required": true,
+        "placeholder": "",
+        "show": true,
+        "name": "password",
+        "value": "",
+        "display_name": "Password",
+        "advanced": false,
+        "input_types": [],
+        "dynamic": false,
+        "info": "Password to authenticate access to Icosa CR API.",
+        "title_case": false,
+        "password": true,
+        "type": "str",
+        "_input_type": "SecretStrInput"
+      },
+      "prompt": {
+        "tool_mode": false,
+        "trace_as_input": true,
+        "trace_as_metadata": true,
+        "load_from_db": false,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": true,
+        "placeholder": "",
+        "show": true,
+        "name": "prompt",
+        "value": "",
+        "display_name": "Prompt",
+        "advanced": false,
+        "input_types": [
+          "Message"
+        ],
+        "dynamic": false,
+        "info": "",
+        "title_case": false,
+        "type": "str",
+        "_input_type": "MessageTextInput"
+      },
+      "username": {
+        "tool_mode": false,
+        "trace_as_metadata": true,
+        "load_from_db": false,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": true,
+        "placeholder": "",
+        "show": true,
+        "name": "username",
+        "value": "",
+        "display_name": "Username",
+        "advanced": false,
+        "dynamic": false,
+        "info": "Username to authenticate access to Icosa CR API",
+        "title_case": false,
+        "type": "str",
+        "_input_type": "StrInput"
+      }
+    },
+    "description": "Uses Combinatorial Optimization to construct an optimal prompt with embedded reasons. Sign up here:\nhttps://forms.gle/oWNv2NKjBNaqqvCx6",
+    "icon": "Icosa",
+    "base_classes": [
+      "Data",
+      "Message"
+    ],
+    "display_name": "Combinatorial Reasoner",
+    "documentation": "",
+    "minimized": false,
+    "custom_fields": {},
+    "output_types": [],
+    "pinned": false,
+    "conditional_paths": [],
+    "frozen": false,
+    "outputs": [
+      {
+        "types": [
+          "Message"
+        ],
+        "selected": "Message",
+        "name": "optimized_prompt",
+        "display_name": "Optimized Prompt",
+        "method": "build_prompt",
+        "value": "__UNDEFINED__",
+        "cache": true,
+        "allows_loop": false,
+        "tool_mode": true
+      },
+      {
+        "types": [
+          "Data"
+        ],
+        "selected": "Data",
+        "name": "reasons",
+        "display_name": "Selected Reasons",
+        "method": "build_reasons",
+        "value": "__UNDEFINED__",
+        "cache": true,
+        "allows_loop": false,
+        "tool_mode": true
+      }
+    ],
+    "field_order": [
+      "prompt",
+      "openai_api_key",
+      "username",
+      "password",
+      "model_name"
+    ],
+    "beta": false,
+    "legacy": false,
+    "edited": false,
+    "metadata": {},
+    "tool_mode": false
+  }
+}

@@ -1,0 +1,204 @@
+{
+  "OlivyaComponent": {
+    "template": {
+      "_type": "Component",
+      "api_key": {
+        "tool_mode": false,
+        "trace_as_input": true,
+        "trace_as_metadata": true,
+        "load_from_db": false,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": true,
+        "placeholder": "",
+        "show": true,
+        "name": "api_key",
+        "value": "",
+        "display_name": "API Key",
+        "advanced": false,
+        "input_types": [
+          "Message"
+        ],
+        "dynamic": false,
+        "info": "Your API key for authentication",
+        "title_case": false,
+        "type": "str",
+        "_input_type": "MessageTextInput"
+      },
+      "code": {
+        "type": "code",
+        "required": true,
+        "placeholder": "",
+        "list": false,
+        "show": true,
+        "multiline": true,
+        "value": "import json\n\nimport httpx\nfrom loguru import logger\n\nfrom langflow.custom import Component\nfrom langflow.io import MessageTextInput, Output\nfrom langflow.schema import Data\n\n\nclass OlivyaComponent(Component):\n    display_name = \"Place Call\"\n    description = \"A component to create an outbound call request from Olivya's platform.\"\n    documentation: str = \"http://docs.langflow.org/components/olivya\"\n    icon = \"Olivya\"\n    name = \"OlivyaComponent\"\n\n    inputs = [\n        MessageTextInput(\n            name=\"api_key\",\n            display_name=\"API Key\",\n            info=\"Your API key for authentication\",\n            value=\"\",\n            required=True,\n        ),\n        MessageTextInput(\n            name=\"from_number\",\n            display_name=\"From Number\",\n            info=\"The Agent's phone number\",\n            value=\"\",\n            required=True,\n        ),\n        MessageTextInput(\n            name=\"to_number\",\n            display_name=\"To Number\",\n            info=\"The recipient's phone number\",\n            value=\"\",\n            required=True,\n        ),\n        MessageTextInput(\n            name=\"first_message\",\n            display_name=\"First Message\",\n            info=\"The Agent's introductory message\",\n            value=\"\",\n            required=False,\n            tool_mode=True,\n        ),\n        MessageTextInput(\n            name=\"system_prompt\",\n            display_name=\"System Prompt\",\n            info=\"The system prompt to guide the interaction\",\n            value=\"\",\n            required=False,\n        ),\n        MessageTextInput(\n            name=\"conversation_history\",\n            display_name=\"Conversation History\",\n            info=\"The summary of the conversation\",\n            value=\"\",\n            required=False,\n            tool_mode=True,\n        ),\n    ]\n\n    outputs = [\n        Output(display_name=\"Output\", name=\"output\", method=\"build_output\"),\n    ]\n\n    async def build_output(self) -> Data:\n        try:\n            payload = {\n                \"variables\": {\n                    \"first_message\": self.first_message.strip() if self.first_message else None,\n                    \"system_prompt\": self.system_prompt.strip() if self.system_prompt else None,\n                    \"conversation_history\": self.conversation_history.strip() if self.conversation_history else None,\n                },\n                \"from_number\": self.from_number.strip(),\n                \"to_number\": self.to_number.strip(),\n            }\n\n            headers = {\n                \"Authorization\": self.api_key.strip(),\n                \"Content-Type\": \"application/json\",\n            }\n\n            logger.info(\"Sending POST request with payload: %s\", payload)\n\n            # Send the POST request with a timeout\n            async with httpx.AsyncClient() as client:\n                response = await client.post(\n                    \"https://phone.olivya.io/create_zap_call\",\n                    headers=headers,\n                    json=payload,\n                    timeout=10.0,\n                )\n                response.raise_for_status()\n\n                # Parse and return the successful response\n                response_data = response.json()\n                logger.info(\"Request successful: %s\", response_data)\n\n        except httpx.HTTPStatusError as http_err:\n            logger.exception(\"HTTP error occurred\")\n            response_data = {\"error\": f\"HTTP error occurred: {http_err}\", \"response_text\": response.text}\n        except httpx.RequestError as req_err:\n            logger.exception(\"Request failed\")\n            response_data = {\"error\": f\"Request failed: {req_err}\"}\n        except json.JSONDecodeError as json_err:\n            logger.exception(\"Response parsing failed\")\n            response_data = {\"error\": f\"Response parsing failed: {json_err}\", \"raw_response\": response.text}\n        except Exception as e:  # noqa: BLE001\n            logger.exception(\"An unexpected error occurred\")\n            response_data = {\"error\": f\"An unexpected error occurred: {e!s}\"}\n\n        # Return the response as part of the output\n        return Data(value=response_data)\n",
+        "fileTypes": [],
+        "file_path": "",
+        "password": false,
+        "name": "code",
+        "advanced": true,
+        "dynamic": true,
+        "info": "",
+        "load_from_db": false,
+        "title_case": false
+      },
+      "conversation_history": {
+        "tool_mode": true,
+        "trace_as_input": true,
+        "trace_as_metadata": true,
+        "load_from_db": false,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "conversation_history",
+        "value": "",
+        "display_name": "Conversation History",
+        "advanced": false,
+        "input_types": [
+          "Message"
+        ],
+        "dynamic": false,
+        "info": "The summary of the conversation",
+        "title_case": false,
+        "type": "str",
+        "_input_type": "MessageTextInput"
+      },
+      "first_message": {
+        "tool_mode": true,
+        "trace_as_input": true,
+        "trace_as_metadata": true,
+        "load_from_db": false,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "first_message",
+        "value": "",
+        "display_name": "First Message",
+        "advanced": false,
+        "input_types": [
+          "Message"
+        ],
+        "dynamic": false,
+        "info": "The Agent's introductory message",
+        "title_case": false,
+        "type": "str",
+        "_input_type": "MessageTextInput"
+      },
+      "from_number": {
+        "tool_mode": false,
+        "trace_as_input": true,
+        "trace_as_metadata": true,
+        "load_from_db": false,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": true,
+        "placeholder": "",
+        "show": true,
+        "name": "from_number",
+        "value": "",
+        "display_name": "From Number",
+        "advanced": false,
+        "input_types": [
+          "Message"
+        ],
+        "dynamic": false,
+        "info": "The Agent's phone number",
+        "title_case": false,
+        "type": "str",
+        "_input_type": "MessageTextInput"
+      },
+      "system_prompt": {
+        "tool_mode": false,
+        "trace_as_input": true,
+        "trace_as_metadata": true,
+        "load_from_db": false,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "system_prompt",
+        "value": "",
+        "display_name": "System Prompt",
+        "advanced": false,
+        "input_types": [
+          "Message"
+        ],
+        "dynamic": false,
+        "info": "The system prompt to guide the interaction",
+        "title_case": false,
+        "type": "str",
+        "_input_type": "MessageTextInput"
+      },
+      "to_number": {
+        "tool_mode": false,
+        "trace_as_input": true,
+        "trace_as_metadata": true,
+        "load_from_db": false,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": true,
+        "placeholder": "",
+        "show": true,
+        "name": "to_number",
+        "value": "",
+        "display_name": "To Number",
+        "advanced": false,
+        "input_types": [
+          "Message"
+        ],
+        "dynamic": false,
+        "info": "The recipient's phone number",
+        "title_case": false,
+        "type": "str",
+        "_input_type": "MessageTextInput"
+      }
+    },
+    "description": "A component to create an outbound call request from Olivya's platform.",
+    "icon": "Olivya",
+    "base_classes": [
+      "Data"
+    ],
+    "display_name": "Place Call",
+    "documentation": "http://docs.langflow.org/components/olivya",
+    "minimized": false,
+    "custom_fields": {},
+    "output_types": [],
+    "pinned": false,
+    "conditional_paths": [],
+    "frozen": false,
+    "outputs": [
+      {
+        "types": [
+          "Data"
+        ],
+        "selected": "Data",
+        "name": "output",
+        "display_name": "Output",
+        "method": "build_output",
+        "value": "__UNDEFINED__",
+        "cache": true,
+        "allows_loop": false,
+        "tool_mode": true
+      }
+    ],
+    "field_order": [
+      "api_key",
+      "from_number",
+      "to_number",
+      "first_message",
+      "system_prompt",
+      "conversation_history"
+    ],
+    "beta": false,
+    "legacy": false,
+    "edited": false,
+    "metadata": {},
+    "tool_mode": false
+  }
+}

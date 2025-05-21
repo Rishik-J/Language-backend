@@ -1,0 +1,173 @@
+{
+  "CohereRerank": {
+    "template": {
+      "_type": "Component",
+      "search_results": {
+        "tool_mode": false,
+        "trace_as_metadata": true,
+        "list": true,
+        "list_add_label": "Add More",
+        "trace_as_input": true,
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "search_results",
+        "value": "",
+        "display_name": "Search Results",
+        "advanced": false,
+        "input_types": [
+          "Data"
+        ],
+        "dynamic": false,
+        "info": "Search Results from a Vector Store.",
+        "title_case": false,
+        "type": "other",
+        "_input_type": "DataInput"
+      },
+      "api_key": {
+        "load_from_db": true,
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "api_key",
+        "value": "",
+        "display_name": "Cohere API Key",
+        "advanced": false,
+        "input_types": [],
+        "dynamic": false,
+        "info": "",
+        "title_case": false,
+        "password": true,
+        "type": "str",
+        "_input_type": "SecretStrInput"
+      },
+      "code": {
+        "type": "code",
+        "required": true,
+        "placeholder": "",
+        "list": false,
+        "show": true,
+        "multiline": true,
+        "value": "from langflow.base.compressors.model import LCCompressorComponent\nfrom langflow.field_typing import BaseDocumentCompressor\nfrom langflow.inputs.inputs import SecretStrInput\nfrom langflow.io import DropdownInput\nfrom langflow.template.field.base import Output\n\n\nclass CohereRerankComponent(LCCompressorComponent):\n    display_name = \"Cohere Rerank\"\n    description = \"Rerank documents using the Cohere API.\"\n    name = \"CohereRerank\"\n    icon = \"Cohere\"\n\n    inputs = [\n        *LCCompressorComponent.inputs,\n        SecretStrInput(\n            name=\"api_key\",\n            display_name=\"Cohere API Key\",\n        ),\n        DropdownInput(\n            name=\"model\",\n            display_name=\"Model\",\n            options=[\n                \"rerank-english-v3.0\",\n                \"rerank-multilingual-v3.0\",\n                \"rerank-english-v2.0\",\n                \"rerank-multilingual-v2.0\",\n            ],\n            value=\"rerank-english-v3.0\",\n        ),\n    ]\n\n    outputs = [\n        Output(\n            display_name=\"Reranked Documents\",\n            name=\"reranked_documents\",\n            method=\"compress_documents\",\n        ),\n    ]\n\n    def build_compressor(self) -> BaseDocumentCompressor:  # type: ignore[type-var]\n        try:\n            from langchain_cohere import CohereRerank\n        except ImportError as e:\n            msg = \"Please install langchain-cohere to use the Cohere model.\"\n            raise ImportError(msg) from e\n        return CohereRerank(\n            cohere_api_key=self.api_key,\n            model=self.model,\n            top_n=self.top_n,\n        )\n",
+        "fileTypes": [],
+        "file_path": "",
+        "password": false,
+        "name": "code",
+        "advanced": true,
+        "dynamic": true,
+        "info": "",
+        "load_from_db": false,
+        "title_case": false
+      },
+      "model": {
+        "tool_mode": false,
+        "trace_as_metadata": true,
+        "options": [
+          "rerank-english-v3.0",
+          "rerank-multilingual-v3.0",
+          "rerank-english-v2.0",
+          "rerank-multilingual-v2.0"
+        ],
+        "options_metadata": [],
+        "combobox": false,
+        "dialog_inputs": {},
+        "toggle": false,
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "model",
+        "value": "rerank-english-v3.0",
+        "display_name": "Model",
+        "advanced": false,
+        "dynamic": false,
+        "info": "",
+        "title_case": false,
+        "type": "str",
+        "_input_type": "DropdownInput"
+      },
+      "search_query": {
+        "tool_mode": true,
+        "trace_as_input": true,
+        "multiline": true,
+        "trace_as_metadata": true,
+        "load_from_db": false,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "search_query",
+        "value": "",
+        "display_name": "Search Query",
+        "advanced": false,
+        "input_types": [
+          "Message"
+        ],
+        "dynamic": false,
+        "info": "",
+        "title_case": false,
+        "copy_field": false,
+        "type": "str",
+        "_input_type": "MultilineInput"
+      },
+      "top_n": {
+        "tool_mode": false,
+        "trace_as_metadata": true,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "top_n",
+        "value": 3,
+        "display_name": "Top N",
+        "advanced": true,
+        "dynamic": false,
+        "info": "",
+        "title_case": false,
+        "type": "int",
+        "_input_type": "IntInput"
+      }
+    },
+    "description": "Rerank documents using the Cohere API.",
+    "icon": "Cohere",
+    "base_classes": [
+      "Data"
+    ],
+    "display_name": "Cohere Rerank",
+    "documentation": "",
+    "minimized": false,
+    "custom_fields": {},
+    "output_types": [],
+    "pinned": false,
+    "conditional_paths": [],
+    "frozen": false,
+    "outputs": [
+      {
+        "types": [
+          "Data"
+        ],
+        "selected": "Data",
+        "name": "reranked_documents",
+        "display_name": "Reranked Documents",
+        "method": "compress_documents",
+        "value": "__UNDEFINED__",
+        "cache": true,
+        "allows_loop": false,
+        "tool_mode": true
+      }
+    ],
+    "field_order": [
+      "search_query",
+      "search_results",
+      "top_n",
+      "api_key",
+      "model"
+    ],
+    "beta": false,
+    "legacy": false,
+    "edited": false,
+    "metadata": {},
+    "tool_mode": false
+  }
+}

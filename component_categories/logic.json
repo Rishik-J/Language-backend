@@ -1,0 +1,1200 @@
+{
+  "FlowTool": {
+    "template": {
+      "_type": "Component",
+      "code": {
+        "type": "code",
+        "required": true,
+        "placeholder": "",
+        "list": false,
+        "show": true,
+        "multiline": true,
+        "value": "from typing import Any\n\nfrom loguru import logger\nfrom typing_extensions import override\n\nfrom langflow.base.langchain_utilities.model import LCToolComponent\nfrom langflow.base.tools.flow_tool import FlowTool\nfrom langflow.field_typing import Tool\nfrom langflow.graph.graph.base import Graph\nfrom langflow.helpers.flow import get_flow_inputs\nfrom langflow.io import BoolInput, DropdownInput, Output, StrInput\nfrom langflow.schema import Data\nfrom langflow.schema.dotdict import dotdict\n\n\nclass FlowToolComponent(LCToolComponent):\n    display_name = \"Flow as Tool [Deprecated]\"\n    description = \"Construct a Tool from a function that runs the loaded Flow.\"\n    field_order = [\"flow_name\", \"name\", \"description\", \"return_direct\"]\n    trace_type = \"tool\"\n    name = \"FlowTool\"\n    legacy: bool = True\n    icon = \"hammer\"\n\n    async def get_flow_names(self) -> list[str]:\n        flow_datas = await self.alist_flows()\n        return [flow_data.data[\"name\"] for flow_data in flow_datas]\n\n    async def get_flow(self, flow_name: str) -> Data | None:\n        \"\"\"Retrieves a flow by its name.\n\n        Args:\n            flow_name (str): The name of the flow to retrieve.\n\n        Returns:\n            Optional[Text]: The flow record if found, None otherwise.\n        \"\"\"\n        flow_datas = await self.alist_flows()\n        for flow_data in flow_datas:\n            if flow_data.data[\"name\"] == flow_name:\n                return flow_data\n        return None\n\n    @override\n    async def update_build_config(self, build_config: dotdict, field_value: Any, field_name: str | None = None):\n        if field_name == \"flow_name\":\n            build_config[\"flow_name\"][\"options\"] = self.get_flow_names()\n\n        return build_config\n\n    inputs = [\n        DropdownInput(\n            name=\"flow_name\", display_name=\"Flow Name\", info=\"The name of the flow to run.\", refresh_button=True\n        ),\n        StrInput(\n            name=\"tool_name\",\n            display_name=\"Name\",\n            info=\"The name of the tool.\",\n        ),\n        StrInput(\n            name=\"tool_description\",\n            display_name=\"Description\",\n            info=\"The description of the tool; defaults to the Flow's description.\",\n        ),\n        BoolInput(\n            name=\"return_direct\",\n            display_name=\"Return Direct\",\n            info=\"Return the result directly from the Tool.\",\n            advanced=True,\n        ),\n    ]\n\n    outputs = [\n        Output(name=\"api_build_tool\", display_name=\"Tool\", method=\"build_tool\"),\n    ]\n\n    async def build_tool(self) -> Tool:\n        FlowTool.model_rebuild()\n        if \"flow_name\" not in self._attributes or not self._attributes[\"flow_name\"]:\n            msg = \"Flow name is required\"\n            raise ValueError(msg)\n        flow_name = self._attributes[\"flow_name\"]\n        flow_data = await self.get_flow(flow_name)\n        if not flow_data:\n            msg = \"Flow not found.\"\n            raise ValueError(msg)\n        graph = Graph.from_payload(\n            flow_data.data[\"data\"],\n            user_id=str(self.user_id),\n        )\n        try:\n            graph.set_run_id(self.graph.run_id)\n        except Exception:  # noqa: BLE001\n            logger.opt(exception=True).warning(\"Failed to set run_id\")\n        inputs = get_flow_inputs(graph)\n        tool_description = self.tool_description.strip() or flow_data.description\n        tool = FlowTool(\n            name=self.tool_name,\n            description=tool_description,\n            graph=graph,\n            return_direct=self.return_direct,\n            inputs=inputs,\n            flow_id=str(flow_data.id),\n            user_id=str(self.user_id),\n            session_id=self.graph.session_id if hasattr(self, \"graph\") else None,\n        )\n        description_repr = repr(tool.description).strip(\"'\")\n        args_str = \"\\n\".join([f\"- {arg_name}: {arg_data['description']}\" for arg_name, arg_data in tool.args.items()])\n        self.status = f\"{description_repr}\\nArguments:\\n{args_str}\"\n        return tool\n",
+        "fileTypes": [],
+        "file_path": "",
+        "password": false,
+        "name": "code",
+        "advanced": true,
+        "dynamic": true,
+        "info": "",
+        "load_from_db": false,
+        "title_case": false
+      },
+      "flow_name": {
+        "tool_mode": false,
+        "trace_as_metadata": true,
+        "options": [],
+        "options_metadata": [],
+        "combobox": false,
+        "dialog_inputs": {},
+        "toggle": false,
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "flow_name",
+        "value": "",
+        "display_name": "Flow Name",
+        "advanced": false,
+        "dynamic": false,
+        "info": "The name of the flow to run.",
+        "refresh_button": true,
+        "title_case": false,
+        "type": "str",
+        "_input_type": "DropdownInput"
+      },
+      "return_direct": {
+        "tool_mode": false,
+        "trace_as_metadata": true,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "return_direct",
+        "value": false,
+        "display_name": "Return Direct",
+        "advanced": true,
+        "dynamic": false,
+        "info": "Return the result directly from the Tool.",
+        "title_case": false,
+        "type": "bool",
+        "_input_type": "BoolInput"
+      },
+      "tool_description": {
+        "tool_mode": false,
+        "trace_as_metadata": true,
+        "load_from_db": false,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "tool_description",
+        "value": "",
+        "display_name": "Description",
+        "advanced": false,
+        "dynamic": false,
+        "info": "The description of the tool; defaults to the Flow's description.",
+        "title_case": false,
+        "type": "str",
+        "_input_type": "StrInput"
+      },
+      "tool_name": {
+        "tool_mode": false,
+        "trace_as_metadata": true,
+        "load_from_db": false,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "tool_name",
+        "value": "",
+        "display_name": "Name",
+        "advanced": false,
+        "dynamic": false,
+        "info": "The name of the tool.",
+        "title_case": false,
+        "type": "str",
+        "_input_type": "StrInput"
+      }
+    },
+    "description": "Construct a Tool from a function that runs the loaded Flow.",
+    "icon": "hammer",
+    "base_classes": [
+      "Tool"
+    ],
+    "display_name": "Flow as Tool [Deprecated]",
+    "documentation": "",
+    "minimized": false,
+    "custom_fields": {},
+    "output_types": [],
+    "pinned": false,
+    "conditional_paths": [],
+    "frozen": false,
+    "outputs": [
+      {
+        "types": [
+          "Tool"
+        ],
+        "selected": "Tool",
+        "name": "api_build_tool",
+        "display_name": "Tool",
+        "method": "build_tool",
+        "value": "__UNDEFINED__",
+        "cache": true,
+        "allows_loop": false,
+        "tool_mode": true
+      }
+    ],
+    "field_order": [
+      "flow_name",
+      "tool_name",
+      "tool_description",
+      "return_direct"
+    ],
+    "beta": false,
+    "legacy": true,
+    "edited": false,
+    "metadata": {},
+    "tool_mode": false
+  },
+  "SubFlow": {
+    "template": {
+      "_type": "Component",
+      "code": {
+        "type": "code",
+        "required": true,
+        "placeholder": "",
+        "list": false,
+        "show": true,
+        "multiline": true,
+        "value": "from typing import Any\n\nfrom loguru import logger\n\nfrom langflow.base.flow_processing.utils import build_data_from_result_data\nfrom langflow.custom import Component\nfrom langflow.graph.graph.base import Graph\nfrom langflow.graph.vertex.base import Vertex\nfrom langflow.helpers.flow import get_flow_inputs\nfrom langflow.io import DropdownInput, Output\nfrom langflow.schema import Data, dotdict\n\n\nclass SubFlowComponent(Component):\n    display_name = \"Sub Flow [Deprecated]\"\n    description = \"Generates a Component from a Flow, with all of its inputs, and \"\n    name = \"SubFlow\"\n    legacy: bool = True\n    icon = \"Workflow\"\n\n    async def get_flow_names(self) -> list[str]:\n        flow_data = await self.alist_flows()\n        return [flow_data.data[\"name\"] for flow_data in flow_data]\n\n    async def get_flow(self, flow_name: str) -> Data | None:\n        flow_datas = await self.alist_flows()\n        for flow_data in flow_datas:\n            if flow_data.data[\"name\"] == flow_name:\n                return flow_data\n        return None\n\n    async def update_build_config(self, build_config: dotdict, field_value: Any, field_name: str | None = None):\n        if field_name == \"flow_name\":\n            build_config[\"flow_name\"][\"options\"] = await self.get_flow_names()\n\n        for key in list(build_config.keys()):\n            if key not in [x.name for x in self.inputs] + [\"code\", \"_type\", \"get_final_results_only\"]:\n                del build_config[key]\n        if field_value is not None and field_name == \"flow_name\":\n            try:\n                flow_data = await self.get_flow(field_value)\n            except Exception:  # noqa: BLE001\n                logger.exception(f\"Error getting flow {field_value}\")\n            else:\n                if not flow_data:\n                    msg = f\"Flow {field_value} not found.\"\n                    logger.error(msg)\n                else:\n                    try:\n                        graph = Graph.from_payload(flow_data.data[\"data\"])\n                        # Get all inputs from the graph\n                        inputs = get_flow_inputs(graph)\n                        # Add inputs to the build config\n                        build_config = self.add_inputs_to_build_config(inputs, build_config)\n                    except Exception:  # noqa: BLE001\n                        logger.exception(f\"Error building graph for flow {field_value}\")\n\n        return build_config\n\n    def add_inputs_to_build_config(self, inputs_vertex: list[Vertex], build_config: dotdict):\n        new_fields: list[dotdict] = []\n\n        for vertex in inputs_vertex:\n            new_vertex_inputs = []\n            field_template = vertex.data[\"node\"][\"template\"]\n            for inp in field_template:\n                if inp not in {\"code\", \"_type\"}:\n                    field_template[inp][\"display_name\"] = (\n                        vertex.display_name + \" - \" + field_template[inp][\"display_name\"]\n                    )\n                    field_template[inp][\"name\"] = vertex.id + \"|\" + inp\n                    new_vertex_inputs.append(field_template[inp])\n            new_fields += new_vertex_inputs\n        for field in new_fields:\n            build_config[field[\"name\"]] = field\n        return build_config\n\n    inputs = [\n        DropdownInput(\n            name=\"flow_name\",\n            display_name=\"Flow Name\",\n            info=\"The name of the flow to run.\",\n            options=[],\n            refresh_button=True,\n            real_time_refresh=True,\n        ),\n    ]\n\n    outputs = [Output(name=\"flow_outputs\", display_name=\"Flow Outputs\", method=\"generate_results\")]\n\n    async def generate_results(self) -> list[Data]:\n        tweaks: dict = {}\n        for field in self._attributes:\n            if field != \"flow_name\" and \"|\" in field:\n                [node, name] = field.split(\"|\")\n                if node not in tweaks:\n                    tweaks[node] = {}\n                tweaks[node][name] = self._attributes[field]\n        flow_name = self._attributes.get(\"flow_name\")\n        run_outputs = await self.run_flow(\n            tweaks=tweaks,\n            flow_name=flow_name,\n            output_type=\"all\",\n        )\n        data: list[Data] = []\n        if not run_outputs:\n            return data\n        run_output = run_outputs[0]\n\n        if run_output is not None:\n            for output in run_output.outputs:\n                if output:\n                    data.extend(build_data_from_result_data(output))\n        return data\n",
+        "fileTypes": [],
+        "file_path": "",
+        "password": false,
+        "name": "code",
+        "advanced": true,
+        "dynamic": true,
+        "info": "",
+        "load_from_db": false,
+        "title_case": false
+      },
+      "flow_name": {
+        "tool_mode": false,
+        "trace_as_metadata": true,
+        "options": [],
+        "options_metadata": [],
+        "combobox": false,
+        "dialog_inputs": {},
+        "toggle": false,
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "flow_name",
+        "value": "",
+        "display_name": "Flow Name",
+        "advanced": false,
+        "dynamic": false,
+        "info": "The name of the flow to run.",
+        "real_time_refresh": true,
+        "refresh_button": true,
+        "title_case": false,
+        "type": "str",
+        "_input_type": "DropdownInput"
+      }
+    },
+    "description": "Generates a Component from a Flow, with all of its inputs, and ",
+    "icon": "Workflow",
+    "base_classes": [
+      "Data"
+    ],
+    "display_name": "Sub Flow [Deprecated]",
+    "documentation": "",
+    "minimized": false,
+    "custom_fields": {},
+    "output_types": [],
+    "pinned": false,
+    "conditional_paths": [],
+    "frozen": false,
+    "outputs": [
+      {
+        "types": [
+          "Data"
+        ],
+        "selected": "Data",
+        "name": "flow_outputs",
+        "display_name": "Flow Outputs",
+        "method": "generate_results",
+        "value": "__UNDEFINED__",
+        "cache": true,
+        "allows_loop": false,
+        "tool_mode": true
+      }
+    ],
+    "field_order": [
+      "flow_name"
+    ],
+    "beta": false,
+    "legacy": true,
+    "edited": false,
+    "metadata": {},
+    "tool_mode": false
+  },
+  "DataConditionalRouter": {
+    "template": {
+      "_type": "Component",
+      "data_input": {
+        "tool_mode": false,
+        "trace_as_metadata": true,
+        "list": true,
+        "list_add_label": "Add More",
+        "trace_as_input": true,
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "data_input",
+        "value": "",
+        "display_name": "Data Input",
+        "advanced": false,
+        "input_types": [
+          "Data"
+        ],
+        "dynamic": false,
+        "info": "The Data object or list of Data objects to process",
+        "title_case": false,
+        "type": "other",
+        "_input_type": "DataInput"
+      },
+      "code": {
+        "type": "code",
+        "required": true,
+        "placeholder": "",
+        "list": false,
+        "show": true,
+        "multiline": true,
+        "value": "from typing import Any\n\nfrom langflow.custom import Component\nfrom langflow.io import DataInput, DropdownInput, MessageTextInput, Output\nfrom langflow.schema import Data, dotdict\n\n\nclass DataConditionalRouterComponent(Component):\n    display_name = \"Condition\"\n    description = \"Route Data object(s) based on a condition applied to a specified key, including boolean validation.\"\n    icon = \"split\"\n    name = \"DataConditionalRouter\"\n    legacy = True\n\n    inputs = [\n        DataInput(\n            name=\"data_input\",\n            display_name=\"Data Input\",\n            info=\"The Data object or list of Data objects to process\",\n            is_list=True,\n        ),\n        MessageTextInput(\n            name=\"key_name\",\n            display_name=\"Key Name\",\n            info=\"The name of the key in the Data object(s) to check\",\n        ),\n        DropdownInput(\n            name=\"operator\",\n            display_name=\"Operator\",\n            options=[\"equals\", \"not equals\", \"contains\", \"starts with\", \"ends with\", \"boolean validator\"],\n            info=\"The operator to apply for comparing the values. 'boolean validator' treats the value as a boolean.\",\n            value=\"equals\",\n        ),\n        MessageTextInput(\n            name=\"compare_value\",\n            display_name=\"Match Text\",\n            info=\"The value to compare against (not used for boolean validator)\",\n        ),\n    ]\n\n    outputs = [\n        Output(display_name=\"True Output\", name=\"true_output\", method=\"process_data\"),\n        Output(display_name=\"False Output\", name=\"false_output\", method=\"process_data\"),\n    ]\n\n    def compare_values(self, item_value: str, compare_value: str, operator: str) -> bool:\n        if operator == \"equals\":\n            return item_value == compare_value\n        if operator == \"not equals\":\n            return item_value != compare_value\n        if operator == \"contains\":\n            return compare_value in item_value\n        if operator == \"starts with\":\n            return item_value.startswith(compare_value)\n        if operator == \"ends with\":\n            return item_value.endswith(compare_value)\n        if operator == \"boolean validator\":\n            return self.parse_boolean(item_value)\n        return False\n\n    def parse_boolean(self, value):\n        if isinstance(value, bool):\n            return value\n        if isinstance(value, str):\n            return value.lower() in {\"true\", \"1\", \"yes\", \"y\", \"on\"}\n        return bool(value)\n\n    def validate_input(self, data_item: Data) -> bool:\n        if not isinstance(data_item, Data):\n            self.status = \"Input is not a Data object\"\n            return False\n        if self.key_name not in data_item.data:\n            self.status = f\"Key '{self.key_name}' not found in Data\"\n            return False\n        return True\n\n    def process_data(self) -> Data | list[Data]:\n        if isinstance(self.data_input, list):\n            true_output = []\n            false_output = []\n            for item in self.data_input:\n                if self.validate_input(item):\n                    result = self.process_single_data(item)\n                    if result:\n                        true_output.append(item)\n                    else:\n                        false_output.append(item)\n            self.stop(\"false_output\" if true_output else \"true_output\")\n            return true_output or false_output\n        if not self.validate_input(self.data_input):\n            return Data(data={\"error\": self.status})\n        result = self.process_single_data(self.data_input)\n        self.stop(\"false_output\" if result else \"true_output\")\n        return self.data_input\n\n    def process_single_data(self, data_item: Data) -> bool:\n        item_value = data_item.data[self.key_name]\n        operator = self.operator\n\n        if operator == \"boolean validator\":\n            condition_met = self.parse_boolean(item_value)\n            condition_description = f\"Boolean validation of '{self.key_name}'\"\n        else:\n            compare_value = self.compare_value\n            condition_met = self.compare_values(str(item_value), compare_value, operator)\n            condition_description = f\"{self.key_name} {operator} {compare_value}\"\n\n        if condition_met:\n            self.status = f\"Condition met: {condition_description}\"\n            return True\n        self.status = f\"Condition not met: {condition_description}\"\n        return False\n\n    def update_build_config(self, build_config: dotdict, field_value: Any, field_name: str | None = None):\n        if field_name == \"operator\":\n            if field_value == \"boolean validator\":\n                build_config[\"compare_value\"][\"show\"] = False\n                build_config[\"compare_value\"][\"advanced\"] = True\n                build_config[\"compare_value\"][\"value\"] = None\n            else:\n                build_config[\"compare_value\"][\"show\"] = True\n                build_config[\"compare_value\"][\"advanced\"] = False\n\n        return build_config\n",
+        "fileTypes": [],
+        "file_path": "",
+        "password": false,
+        "name": "code",
+        "advanced": true,
+        "dynamic": true,
+        "info": "",
+        "load_from_db": false,
+        "title_case": false
+      },
+      "compare_value": {
+        "tool_mode": false,
+        "trace_as_input": true,
+        "trace_as_metadata": true,
+        "load_from_db": false,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "compare_value",
+        "value": "",
+        "display_name": "Match Text",
+        "advanced": false,
+        "input_types": [
+          "Message"
+        ],
+        "dynamic": false,
+        "info": "The value to compare against (not used for boolean validator)",
+        "title_case": false,
+        "type": "str",
+        "_input_type": "MessageTextInput"
+      },
+      "key_name": {
+        "tool_mode": false,
+        "trace_as_input": true,
+        "trace_as_metadata": true,
+        "load_from_db": false,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "key_name",
+        "value": "",
+        "display_name": "Key Name",
+        "advanced": false,
+        "input_types": [
+          "Message"
+        ],
+        "dynamic": false,
+        "info": "The name of the key in the Data object(s) to check",
+        "title_case": false,
+        "type": "str",
+        "_input_type": "MessageTextInput"
+      },
+      "operator": {
+        "tool_mode": false,
+        "trace_as_metadata": true,
+        "options": [
+          "equals",
+          "not equals",
+          "contains",
+          "starts with",
+          "ends with",
+          "boolean validator"
+        ],
+        "options_metadata": [],
+        "combobox": false,
+        "dialog_inputs": {},
+        "toggle": false,
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "operator",
+        "value": "equals",
+        "display_name": "Operator",
+        "advanced": false,
+        "dynamic": false,
+        "info": "The operator to apply for comparing the values. 'boolean validator' treats the value as a boolean.",
+        "title_case": false,
+        "type": "str",
+        "_input_type": "DropdownInput"
+      }
+    },
+    "description": "Route Data object(s) based on a condition applied to a specified key, including boolean validation.",
+    "icon": "split",
+    "base_classes": [
+      "Data"
+    ],
+    "display_name": "Condition",
+    "documentation": "",
+    "minimized": false,
+    "custom_fields": {},
+    "output_types": [],
+    "pinned": false,
+    "conditional_paths": [],
+    "frozen": false,
+    "outputs": [
+      {
+        "types": [
+          "Data"
+        ],
+        "selected": "Data",
+        "name": "true_output",
+        "display_name": "True Output",
+        "method": "process_data",
+        "value": "__UNDEFINED__",
+        "cache": true,
+        "allows_loop": false,
+        "tool_mode": true
+      },
+      {
+        "types": [
+          "Data"
+        ],
+        "selected": "Data",
+        "name": "false_output",
+        "display_name": "False Output",
+        "method": "process_data",
+        "value": "__UNDEFINED__",
+        "cache": true,
+        "allows_loop": false,
+        "tool_mode": true
+      }
+    ],
+    "field_order": [
+      "data_input",
+      "key_name",
+      "operator",
+      "compare_value"
+    ],
+    "beta": false,
+    "legacy": true,
+    "edited": false,
+    "metadata": {},
+    "tool_mode": false
+  },
+  "Notify": {
+    "template": {
+      "_type": "CustomComponent",
+      "data": {
+        "type": "Data | None",
+        "required": false,
+        "placeholder": "",
+        "list": false,
+        "show": true,
+        "multiline": false,
+        "fileTypes": [],
+        "file_path": "",
+        "name": "data",
+        "display_name": "Data",
+        "advanced": false,
+        "dynamic": false,
+        "info": "The data to store.",
+        "load_from_db": false,
+        "title_case": false
+      },
+      "append": {
+        "type": "bool",
+        "required": false,
+        "placeholder": "",
+        "list": false,
+        "show": true,
+        "multiline": false,
+        "value": false,
+        "fileTypes": [],
+        "file_path": "",
+        "name": "append",
+        "display_name": "Append",
+        "advanced": false,
+        "dynamic": false,
+        "info": "If True, the record will be appended to the notification.",
+        "load_from_db": false,
+        "title_case": false
+      },
+      "code": {
+        "type": "code",
+        "required": true,
+        "placeholder": "",
+        "list": false,
+        "show": true,
+        "multiline": true,
+        "value": "from langflow.custom import CustomComponent\nfrom langflow.schema import Data\n\n\nclass NotifyComponent(CustomComponent):\n    display_name = \"Notify\"\n    description = \"A component to generate a notification to Get Notified component.\"\n    icon = \"Notify\"\n    name = \"Notify\"\n    beta: bool = True\n\n    def build_config(self):\n        return {\n            \"name\": {\"display_name\": \"Name\", \"info\": \"The name of the notification.\"},\n            \"data\": {\"display_name\": \"Data\", \"info\": \"The data to store.\"},\n            \"append\": {\n                \"display_name\": \"Append\",\n                \"info\": \"If True, the record will be appended to the notification.\",\n            },\n        }\n\n    def build(self, name: str, *, data: Data | None = None, append: bool = False) -> Data:\n        if data and not isinstance(data, Data):\n            if isinstance(data, str):\n                data = Data(text=data)\n            elif isinstance(data, dict):\n                data = Data(data=data)\n            else:\n                data = Data(text=str(data))\n        elif not data:\n            data = Data(text=\"\")\n        if data:\n            if append:\n                self.append_state(name, data)\n            else:\n                self.update_state(name, data)\n        else:\n            self.status = \"No record provided.\"\n        self.status = data\n        self._set_successors_ids()\n        return data\n\n    def _set_successors_ids(self):\n        self._vertex.is_state = True\n        successors = self._vertex.graph.successor_map.get(self._vertex.id, [])\n        return successors + self._vertex.graph.activated_vertices\n",
+        "fileTypes": [],
+        "file_path": "",
+        "password": false,
+        "name": "code",
+        "advanced": true,
+        "dynamic": true,
+        "info": "",
+        "load_from_db": false,
+        "title_case": false
+      },
+      "name": {
+        "type": "str",
+        "required": true,
+        "placeholder": "",
+        "list": false,
+        "show": true,
+        "multiline": false,
+        "fileTypes": [],
+        "file_path": "",
+        "name": "name",
+        "display_name": "Name",
+        "advanced": false,
+        "dynamic": false,
+        "info": "The name of the notification.",
+        "load_from_db": false,
+        "title_case": false,
+        "input_types": [
+          "Text"
+        ]
+      }
+    },
+    "description": "A component to generate a notification to Get Notified component.",
+    "icon": "Notify",
+    "base_classes": [
+      "Data"
+    ],
+    "display_name": "Notify",
+    "documentation": "",
+    "minimized": false,
+    "custom_fields": {
+      "name": null,
+      "data": null,
+      "append": null
+    },
+    "output_types": [
+      "Data"
+    ],
+    "pinned": false,
+    "conditional_paths": [],
+    "frozen": false,
+    "outputs": [
+      {
+        "types": [
+          "Data"
+        ],
+        "selected": "Data",
+        "name": "data",
+        "hidden": null,
+        "display_name": "Data",
+        "method": null,
+        "value": "__UNDEFINED__",
+        "cache": true,
+        "required_inputs": null,
+        "allows_loop": false,
+        "options": null,
+        "tool_mode": true
+      }
+    ],
+    "field_order": [],
+    "beta": true,
+    "legacy": false,
+    "edited": false,
+    "metadata": {},
+    "tool_mode": false
+  },
+  "ConditionalRouter": {
+    "template": {
+      "_type": "Component",
+      "case_sensitive": {
+        "tool_mode": false,
+        "trace_as_metadata": true,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "case_sensitive",
+        "value": false,
+        "display_name": "Case Sensitive",
+        "advanced": false,
+        "dynamic": false,
+        "info": "If true, the comparison will be case sensitive.",
+        "title_case": false,
+        "type": "bool",
+        "_input_type": "BoolInput"
+      },
+      "code": {
+        "type": "code",
+        "required": true,
+        "placeholder": "",
+        "list": false,
+        "show": true,
+        "multiline": true,
+        "value": "import re\n\nfrom langflow.custom import Component\nfrom langflow.io import BoolInput, DropdownInput, IntInput, MessageInput, MessageTextInput, Output\nfrom langflow.schema.message import Message\n\n\nclass ConditionalRouterComponent(Component):\n    display_name = \"If-Else\"\n    description = \"Routes an input message to a corresponding output based on text comparison.\"\n    icon = \"split\"\n    name = \"ConditionalRouter\"\n\n    def __init__(self, *args, **kwargs):\n        super().__init__(*args, **kwargs)\n        self.__iteration_updated = False\n\n    inputs = [\n        MessageTextInput(\n            name=\"input_text\",\n            display_name=\"Text Input\",\n            info=\"The primary text input for the operation.\",\n            required=True,\n        ),\n        MessageTextInput(\n            name=\"match_text\",\n            display_name=\"Match Text\",\n            info=\"The text input to compare against.\",\n            required=True,\n        ),\n        DropdownInput(\n            name=\"operator\",\n            display_name=\"Operator\",\n            options=[\"equals\", \"not equals\", \"contains\", \"starts with\", \"ends with\", \"regex\"],\n            info=\"The operator to apply for comparing the texts.\",\n            value=\"equals\",\n            real_time_refresh=True,\n        ),\n        BoolInput(\n            name=\"case_sensitive\",\n            display_name=\"Case Sensitive\",\n            info=\"If true, the comparison will be case sensitive.\",\n            value=False,\n        ),\n        MessageInput(\n            name=\"message\",\n            display_name=\"Message\",\n            info=\"The message to pass through either route.\",\n        ),\n        IntInput(\n            name=\"max_iterations\",\n            display_name=\"Max Iterations\",\n            info=\"The maximum number of iterations for the conditional router.\",\n            value=10,\n            advanced=True,\n        ),\n        DropdownInput(\n            name=\"default_route\",\n            display_name=\"Default Route\",\n            options=[\"true_result\", \"false_result\"],\n            info=\"The default route to take when max iterations are reached.\",\n            value=\"false_result\",\n            advanced=True,\n        ),\n    ]\n\n    outputs = [\n        Output(display_name=\"True\", name=\"true_result\", method=\"true_response\"),\n        Output(display_name=\"False\", name=\"false_result\", method=\"false_response\"),\n    ]\n\n    def _pre_run_setup(self):\n        self.__iteration_updated = False\n\n    def evaluate_condition(self, input_text: str, match_text: str, operator: str, *, case_sensitive: bool) -> bool:\n        if not case_sensitive and operator != \"regex\":\n            input_text = input_text.lower()\n            match_text = match_text.lower()\n\n        if operator == \"equals\":\n            return input_text == match_text\n        if operator == \"not equals\":\n            return input_text != match_text\n        if operator == \"contains\":\n            return match_text in input_text\n        if operator == \"starts with\":\n            return input_text.startswith(match_text)\n        if operator == \"ends with\":\n            return input_text.endswith(match_text)\n        if operator == \"regex\":\n            try:\n                return bool(re.match(match_text, input_text))\n            except re.error:\n                return False  # Return False if the regex is invalid\n        return False\n\n    def iterate_and_stop_once(self, route_to_stop: str):\n        if not self.__iteration_updated:\n            self.update_ctx({f\"{self._id}_iteration\": self.ctx.get(f\"{self._id}_iteration\", 0) + 1})\n            self.__iteration_updated = True\n            if self.ctx.get(f\"{self._id}_iteration\", 0) >= self.max_iterations and route_to_stop == self.default_route:\n                route_to_stop = \"true_result\" if route_to_stop == \"false_result\" else \"false_result\"\n            self.stop(route_to_stop)\n\n    def true_response(self) -> Message:\n        result = self.evaluate_condition(\n            self.input_text, self.match_text, self.operator, case_sensitive=self.case_sensitive\n        )\n        if result:\n            self.status = self.message\n            self.iterate_and_stop_once(\"false_result\")\n            return self.message\n        self.iterate_and_stop_once(\"true_result\")\n        return Message(content=\"\")\n\n    def false_response(self) -> Message:\n        result = self.evaluate_condition(\n            self.input_text, self.match_text, self.operator, case_sensitive=self.case_sensitive\n        )\n        if not result:\n            self.status = self.message\n            self.iterate_and_stop_once(\"true_result\")\n            return self.message\n        self.iterate_and_stop_once(\"false_result\")\n        return Message(content=\"\")\n\n    def update_build_config(self, build_config: dict, field_value: str, field_name: str | None = None) -> dict:\n        if field_name == \"operator\":\n            if field_value == \"regex\":\n                build_config.pop(\"case_sensitive\", None)\n\n            # Ensure case_sensitive is present for all other operators\n            elif \"case_sensitive\" not in build_config:\n                case_sensitive_input = next(\n                    (input_field for input_field in self.inputs if input_field.name == \"case_sensitive\"), None\n                )\n                if case_sensitive_input:\n                    build_config[\"case_sensitive\"] = case_sensitive_input.to_dict()\n        return build_config\n",
+        "fileTypes": [],
+        "file_path": "",
+        "password": false,
+        "name": "code",
+        "advanced": true,
+        "dynamic": true,
+        "info": "",
+        "load_from_db": false,
+        "title_case": false
+      },
+      "default_route": {
+        "tool_mode": false,
+        "trace_as_metadata": true,
+        "options": [
+          "true_result",
+          "false_result"
+        ],
+        "options_metadata": [],
+        "combobox": false,
+        "dialog_inputs": {},
+        "toggle": false,
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "default_route",
+        "value": "false_result",
+        "display_name": "Default Route",
+        "advanced": true,
+        "dynamic": false,
+        "info": "The default route to take when max iterations are reached.",
+        "title_case": false,
+        "type": "str",
+        "_input_type": "DropdownInput"
+      },
+      "input_text": {
+        "tool_mode": false,
+        "trace_as_input": true,
+        "trace_as_metadata": true,
+        "load_from_db": false,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": true,
+        "placeholder": "",
+        "show": true,
+        "name": "input_text",
+        "value": "",
+        "display_name": "Text Input",
+        "advanced": false,
+        "input_types": [
+          "Message"
+        ],
+        "dynamic": false,
+        "info": "The primary text input for the operation.",
+        "title_case": false,
+        "type": "str",
+        "_input_type": "MessageTextInput"
+      },
+      "match_text": {
+        "tool_mode": false,
+        "trace_as_input": true,
+        "trace_as_metadata": true,
+        "load_from_db": false,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": true,
+        "placeholder": "",
+        "show": true,
+        "name": "match_text",
+        "value": "",
+        "display_name": "Match Text",
+        "advanced": false,
+        "input_types": [
+          "Message"
+        ],
+        "dynamic": false,
+        "info": "The text input to compare against.",
+        "title_case": false,
+        "type": "str",
+        "_input_type": "MessageTextInput"
+      },
+      "max_iterations": {
+        "tool_mode": false,
+        "trace_as_metadata": true,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "max_iterations",
+        "value": 10,
+        "display_name": "Max Iterations",
+        "advanced": true,
+        "dynamic": false,
+        "info": "The maximum number of iterations for the conditional router.",
+        "title_case": false,
+        "type": "int",
+        "_input_type": "IntInput"
+      },
+      "message": {
+        "trace_as_input": true,
+        "tool_mode": false,
+        "trace_as_metadata": true,
+        "load_from_db": false,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "message",
+        "value": "",
+        "display_name": "Message",
+        "advanced": false,
+        "input_types": [
+          "Message"
+        ],
+        "dynamic": false,
+        "info": "The message to pass through either route.",
+        "title_case": false,
+        "type": "str",
+        "_input_type": "MessageInput"
+      },
+      "operator": {
+        "tool_mode": false,
+        "trace_as_metadata": true,
+        "options": [
+          "equals",
+          "not equals",
+          "contains",
+          "starts with",
+          "ends with",
+          "regex"
+        ],
+        "options_metadata": [],
+        "combobox": false,
+        "dialog_inputs": {},
+        "toggle": false,
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "operator",
+        "value": "equals",
+        "display_name": "Operator",
+        "advanced": false,
+        "dynamic": false,
+        "info": "The operator to apply for comparing the texts.",
+        "real_time_refresh": true,
+        "title_case": false,
+        "type": "str",
+        "_input_type": "DropdownInput"
+      }
+    },
+    "description": "Routes an input message to a corresponding output based on text comparison.",
+    "icon": "split",
+    "base_classes": [
+      "Message"
+    ],
+    "display_name": "If-Else",
+    "documentation": "",
+    "minimized": false,
+    "custom_fields": {},
+    "output_types": [],
+    "pinned": false,
+    "conditional_paths": [],
+    "frozen": false,
+    "outputs": [
+      {
+        "types": [
+          "Message"
+        ],
+        "selected": "Message",
+        "name": "true_result",
+        "display_name": "True",
+        "method": "true_response",
+        "value": "__UNDEFINED__",
+        "cache": true,
+        "allows_loop": false,
+        "tool_mode": true
+      },
+      {
+        "types": [
+          "Message"
+        ],
+        "selected": "Message",
+        "name": "false_result",
+        "display_name": "False",
+        "method": "false_response",
+        "value": "__UNDEFINED__",
+        "cache": true,
+        "allows_loop": false,
+        "tool_mode": true
+      }
+    ],
+    "field_order": [
+      "input_text",
+      "match_text",
+      "operator",
+      "case_sensitive",
+      "message",
+      "max_iterations",
+      "default_route"
+    ],
+    "beta": false,
+    "legacy": false,
+    "edited": false,
+    "metadata": {},
+    "tool_mode": false
+  },
+  "RunFlow": {
+    "template": {
+      "_type": "Component",
+      "code": {
+        "type": "code",
+        "required": true,
+        "placeholder": "",
+        "list": false,
+        "show": true,
+        "multiline": true,
+        "value": "from typing import Any\n\nfrom loguru import logger\n\nfrom langflow.base.tools.run_flow import RunFlowBaseComponent\nfrom langflow.helpers.flow import run_flow\nfrom langflow.schema import dotdict\n\n\nclass RunFlowComponent(RunFlowBaseComponent):\n    display_name = \"Run Flow\"\n    description = (\n        \"Creates a tool component from a Flow that takes all its inputs and runs it. \"\n        \" \\n **Select a Flow to use the tool mode**\"\n    )\n    beta = True\n    name = \"RunFlow\"\n    icon = \"Workflow\"\n\n    inputs = RunFlowBaseComponent._base_inputs\n    outputs = RunFlowBaseComponent._base_outputs\n\n    async def update_build_config(self, build_config: dotdict, field_value: Any, field_name: str | None = None):\n        if field_name == \"flow_name_selected\":\n            build_config[\"flow_name_selected\"][\"options\"] = await self.get_flow_names()\n            missing_keys = [key for key in self.default_keys if key not in build_config]\n            if missing_keys:\n                msg = f\"Missing required keys in build_config: {missing_keys}\"\n                raise ValueError(msg)\n            if field_value is not None:\n                try:\n                    graph = await self.get_graph(field_value)\n                    build_config = self.update_build_config_from_graph(build_config, graph)\n                except Exception as e:\n                    msg = f\"Error building graph for flow {field_value}\"\n                    logger.exception(msg)\n                    raise RuntimeError(msg) from e\n        return build_config\n\n    async def run_flow_with_tweaks(self):\n        tweaks: dict = {}\n\n        flow_name_selected = self._attributes.get(\"flow_name_selected\")\n        parsed_flow_tweak_data = self._attributes.get(\"flow_tweak_data\", {})\n        if not isinstance(parsed_flow_tweak_data, dict):\n            parsed_flow_tweak_data = parsed_flow_tweak_data.dict()\n\n        if parsed_flow_tweak_data != {}:\n            for field in parsed_flow_tweak_data:\n                if \"~\" in field:\n                    [node, name] = field.split(\"~\")\n                    if node not in tweaks:\n                        tweaks[node] = {}\n                    tweaks[node][name] = parsed_flow_tweak_data[field]\n        else:\n            for field in self._attributes:\n                if field not in self.default_keys and \"~\" in field:\n                    [node, name] = field.split(\"~\")\n                    if node not in tweaks:\n                        tweaks[node] = {}\n                    tweaks[node][name] = self._attributes[field]\n\n        return await run_flow(\n            inputs=None,\n            output_type=\"all\",\n            flow_id=None,\n            flow_name=flow_name_selected,\n            tweaks=tweaks,\n            user_id=str(self.user_id),\n            session_id=self.graph.session_id or self.session_id,\n        )\n",
+        "fileTypes": [],
+        "file_path": "",
+        "password": false,
+        "name": "code",
+        "advanced": true,
+        "dynamic": true,
+        "info": "",
+        "load_from_db": false,
+        "title_case": false
+      },
+      "flow_name_selected": {
+        "tool_mode": false,
+        "trace_as_metadata": true,
+        "options": [],
+        "options_metadata": [],
+        "combobox": false,
+        "dialog_inputs": {},
+        "toggle": false,
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "flow_name_selected",
+        "display_name": "Flow Name",
+        "advanced": false,
+        "dynamic": false,
+        "info": "The name of the flow to run.",
+        "real_time_refresh": true,
+        "title_case": false,
+        "type": "str",
+        "_input_type": "DropdownInput"
+      },
+      "session_id": {
+        "trace_as_input": true,
+        "tool_mode": false,
+        "trace_as_metadata": true,
+        "load_from_db": false,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "session_id",
+        "value": {
+          "text_key": "text",
+          "data": {
+            "text": "",
+            "files": [],
+            "sender": null,
+            "sender_name": null,
+            "session_id": "",
+            "timestamp": "2025-05-21 11:29:32 UTC",
+            "flow_id": null,
+            "error": false,
+            "edit": false,
+            "properties": {
+              "edited": false,
+              "source": {
+                "id": null,
+                "display_name": null,
+                "source": null
+              },
+              "allow_markdown": false,
+              "state": "complete",
+              "targets": []
+            },
+            "category": "message",
+            "content_blocks": []
+          },
+          "default_value": ""
+        },
+        "display_name": "Session ID",
+        "advanced": true,
+        "input_types": [
+          "Message"
+        ],
+        "dynamic": false,
+        "info": "The session ID to run the flow in.",
+        "title_case": false,
+        "type": "str",
+        "_input_type": "MessageInput"
+      }
+    },
+    "description": "Creates a tool component from a Flow that takes all its inputs and runs it.  \n **Select a Flow to use the tool mode**",
+    "icon": "Workflow",
+    "base_classes": [
+      "Data",
+      "DataFrame",
+      "Message"
+    ],
+    "display_name": "Run Flow",
+    "documentation": "",
+    "minimized": false,
+    "custom_fields": {},
+    "output_types": [],
+    "pinned": false,
+    "conditional_paths": [],
+    "frozen": false,
+    "outputs": [
+      {
+        "types": [
+          "Data"
+        ],
+        "selected": "Data",
+        "name": "flow_outputs_data",
+        "hidden": true,
+        "display_name": "Flow Data Output",
+        "method": "data_output",
+        "value": "__UNDEFINED__",
+        "cache": true,
+        "required_inputs": [],
+        "allows_loop": false,
+        "tool_mode": true
+      },
+      {
+        "types": [
+          "DataFrame"
+        ],
+        "selected": "DataFrame",
+        "name": "flow_outputs_dataframe",
+        "hidden": true,
+        "display_name": "Flow Dataframe Output",
+        "method": "dataframe_output",
+        "value": "__UNDEFINED__",
+        "cache": true,
+        "required_inputs": [],
+        "allows_loop": false,
+        "tool_mode": true
+      },
+      {
+        "types": [
+          "Message"
+        ],
+        "selected": "Message",
+        "name": "flow_outputs_message",
+        "display_name": "Flow Message Output",
+        "method": "message_output",
+        "value": "__UNDEFINED__",
+        "cache": true,
+        "required_inputs": [],
+        "allows_loop": false,
+        "tool_mode": true
+      }
+    ],
+    "field_order": [
+      "flow_name_selected",
+      "session_id"
+    ],
+    "beta": true,
+    "legacy": false,
+    "edited": false,
+    "metadata": {},
+    "tool_mode": false
+  },
+  "LoopComponent": {
+    "template": {
+      "_type": "Component",
+      "data": {
+        "tool_mode": false,
+        "trace_as_metadata": true,
+        "list": false,
+        "list_add_label": "Add More",
+        "trace_as_input": true,
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "data",
+        "value": "",
+        "display_name": "Data",
+        "advanced": false,
+        "input_types": [
+          "Data"
+        ],
+        "dynamic": false,
+        "info": "The initial list of Data objects to iterate over.",
+        "title_case": false,
+        "type": "other",
+        "_input_type": "DataInput"
+      },
+      "code": {
+        "type": "code",
+        "required": true,
+        "placeholder": "",
+        "list": false,
+        "show": true,
+        "multiline": true,
+        "value": "from langflow.custom import Component\nfrom langflow.io import DataInput, Output\nfrom langflow.schema import Data\n\n\nclass LoopComponent(Component):\n    display_name = \"Loop\"\n    description = (\n        \"Iterates over a list of Data objects, outputting one item at a time and aggregating results from loop inputs.\"\n    )\n    icon = \"infinity\"\n\n    inputs = [\n        DataInput(\n            name=\"data\",\n            display_name=\"Data\",\n            info=\"The initial list of Data objects to iterate over.\",\n        ),\n    ]\n\n    outputs = [\n        Output(display_name=\"Item\", name=\"item\", method=\"item_output\", allows_loop=True),\n        Output(display_name=\"Done\", name=\"done\", method=\"done_output\"),\n    ]\n\n    def initialize_data(self) -> None:\n        \"\"\"Initialize the data list, context index, and aggregated list.\"\"\"\n        if self.ctx.get(f\"{self._id}_initialized\", False):\n            return\n\n        # Ensure data is a list of Data objects\n        data_list = self._validate_data(self.data)\n\n        # Store the initial data and context variables\n        self.update_ctx(\n            {\n                f\"{self._id}_data\": data_list,\n                f\"{self._id}_index\": 0,\n                f\"{self._id}_aggregated\": [],\n                f\"{self._id}_initialized\": True,\n            }\n        )\n\n    def _validate_data(self, data):\n        \"\"\"Validate and return a list of Data objects.\"\"\"\n        if isinstance(data, Data):\n            return [data]\n        if isinstance(data, list) and all(isinstance(item, Data) for item in data):\n            return data\n        msg = \"The 'data' input must be a list of Data objects or a single Data object.\"\n        raise TypeError(msg)\n\n    def evaluate_stop_loop(self) -> bool:\n        \"\"\"Evaluate whether to stop item or done output.\"\"\"\n        current_index = self.ctx.get(f\"{self._id}_index\", 0)\n        data_length = len(self.ctx.get(f\"{self._id}_data\", []))\n        return current_index > data_length\n\n    def item_output(self) -> Data:\n        \"\"\"Output the next item in the list or stop if done.\"\"\"\n        self.initialize_data()\n        current_item = Data(text=\"\")\n\n        if self.evaluate_stop_loop():\n            self.stop(\"item\")\n            return Data(text=\"\")\n\n        # Get data list and current index\n        data_list, current_index = self.loop_variables()\n        if current_index < len(data_list):\n            # Output current item and increment index\n            try:\n                current_item = data_list[current_index]\n            except IndexError:\n                current_item = Data(text=\"\")\n        self.aggregated_output()\n        self.update_ctx({f\"{self._id}_index\": current_index + 1})\n        return current_item\n\n    def done_output(self) -> Data:\n        \"\"\"Trigger the done output when iteration is complete.\"\"\"\n        self.initialize_data()\n\n        if self.evaluate_stop_loop():\n            self.stop(\"item\")\n            self.start(\"done\")\n\n            return self.ctx.get(f\"{self._id}_aggregated\", [])\n        self.stop(\"done\")\n        return Data(text=\"\")\n\n    def loop_variables(self):\n        \"\"\"Retrieve loop variables from context.\"\"\"\n        return (\n            self.ctx.get(f\"{self._id}_data\", []),\n            self.ctx.get(f\"{self._id}_index\", 0),\n        )\n\n    def aggregated_output(self) -> Data:\n        \"\"\"Return the aggregated list once all items are processed.\"\"\"\n        self.initialize_data()\n\n        # Get data list and aggregated list\n        data_list = self.ctx.get(f\"{self._id}_data\", [])\n        aggregated = self.ctx.get(f\"{self._id}_aggregated\", [])\n\n        # Check if loop input is provided and append to aggregated list\n        if self.item is not None and not isinstance(self.item, str) and len(aggregated) <= len(data_list):\n            aggregated.append(self.item)\n            self.update_ctx({f\"{self._id}_aggregated\": aggregated})\n        return aggregated\n",
+        "fileTypes": [],
+        "file_path": "",
+        "password": false,
+        "name": "code",
+        "advanced": true,
+        "dynamic": true,
+        "info": "",
+        "load_from_db": false,
+        "title_case": false
+      }
+    },
+    "description": "Iterates over a list of Data objects, outputting one item at a time and aggregating results from loop inputs.",
+    "icon": "infinity",
+    "base_classes": [
+      "Data"
+    ],
+    "display_name": "Loop",
+    "documentation": "",
+    "minimized": false,
+    "custom_fields": {},
+    "output_types": [],
+    "pinned": false,
+    "conditional_paths": [],
+    "frozen": false,
+    "outputs": [
+      {
+        "types": [
+          "Data"
+        ],
+        "selected": "Data",
+        "name": "item",
+        "display_name": "Item",
+        "method": "item_output",
+        "value": "__UNDEFINED__",
+        "cache": true,
+        "allows_loop": true,
+        "tool_mode": true
+      },
+      {
+        "types": [
+          "Data"
+        ],
+        "selected": "Data",
+        "name": "done",
+        "display_name": "Done",
+        "method": "done_output",
+        "value": "__UNDEFINED__",
+        "cache": true,
+        "allows_loop": false,
+        "tool_mode": true
+      }
+    ],
+    "field_order": [
+      "data"
+    ],
+    "beta": false,
+    "legacy": false,
+    "edited": false,
+    "metadata": {},
+    "tool_mode": false
+  },
+  "Listen": {
+    "template": {
+      "_type": "CustomComponent",
+      "code": {
+        "type": "code",
+        "required": true,
+        "placeholder": "",
+        "list": false,
+        "show": true,
+        "multiline": true,
+        "value": "from langflow.custom import CustomComponent\nfrom langflow.schema import Data\n\n\nclass ListenComponent(CustomComponent):\n    display_name = \"Listen\"\n    description = \"A component to listen for a notification.\"\n    name = \"Listen\"\n    beta: bool = True\n    icon = \"Radio\"\n\n    def build_config(self):\n        return {\n            \"name\": {\n                \"display_name\": \"Name\",\n                \"info\": \"The name of the notification to listen for.\",\n            },\n        }\n\n    def build(self, name: str) -> Data:\n        state = self.get_state(name)\n        self._set_successors_ids()\n        self.status = state\n        return state\n\n    def _set_successors_ids(self):\n        self._vertex.is_state = True\n        successors = self._vertex.graph.successor_map.get(self._vertex.id, [])\n        return successors + self._vertex.graph.activated_vertices\n",
+        "fileTypes": [],
+        "file_path": "",
+        "password": false,
+        "name": "code",
+        "advanced": true,
+        "dynamic": true,
+        "info": "",
+        "load_from_db": false,
+        "title_case": false
+      },
+      "name": {
+        "type": "str",
+        "required": true,
+        "placeholder": "",
+        "list": false,
+        "show": true,
+        "multiline": false,
+        "fileTypes": [],
+        "file_path": "",
+        "name": "name",
+        "display_name": "Name",
+        "advanced": false,
+        "dynamic": false,
+        "info": "The name of the notification to listen for.",
+        "load_from_db": false,
+        "title_case": false,
+        "input_types": [
+          "Text"
+        ]
+      }
+    },
+    "description": "A component to listen for a notification.",
+    "icon": "Radio",
+    "base_classes": [
+      "Data"
+    ],
+    "display_name": "Listen",
+    "documentation": "",
+    "minimized": false,
+    "custom_fields": {
+      "name": null
+    },
+    "output_types": [
+      "Data"
+    ],
+    "pinned": false,
+    "conditional_paths": [],
+    "frozen": false,
+    "outputs": [
+      {
+        "types": [
+          "Data"
+        ],
+        "selected": "Data",
+        "name": "data",
+        "hidden": null,
+        "display_name": "Data",
+        "method": null,
+        "value": "__UNDEFINED__",
+        "cache": true,
+        "required_inputs": null,
+        "allows_loop": false,
+        "options": null,
+        "tool_mode": true
+      }
+    ],
+    "field_order": [],
+    "beta": true,
+    "legacy": false,
+    "edited": false,
+    "metadata": {},
+    "tool_mode": false
+  },
+  "Pass": {
+    "template": {
+      "_type": "Component",
+      "code": {
+        "type": "code",
+        "required": true,
+        "placeholder": "",
+        "list": false,
+        "show": true,
+        "multiline": true,
+        "value": "from langflow.custom import Component\nfrom langflow.io import MessageInput\nfrom langflow.schema.message import Message\nfrom langflow.template import Output\n\n\nclass PassMessageComponent(Component):\n    display_name = \"Pass\"\n    description = \"Forwards the input message, unchanged.\"\n    name = \"Pass\"\n    icon = \"arrow-right\"\n\n    inputs = [\n        MessageInput(\n            name=\"input_message\",\n            display_name=\"Input Message\",\n            info=\"The message to be passed forward.\",\n            required=True,\n        ),\n        MessageInput(\n            name=\"ignored_message\",\n            display_name=\"Ignored Message\",\n            info=\"A second message to be ignored. Used as a workaround for continuity.\",\n            advanced=True,\n        ),\n    ]\n\n    outputs = [\n        Output(display_name=\"Output Message\", name=\"output_message\", method=\"pass_message\"),\n    ]\n\n    def pass_message(self) -> Message:\n        self.status = self.input_message\n        return self.input_message\n",
+        "fileTypes": [],
+        "file_path": "",
+        "password": false,
+        "name": "code",
+        "advanced": true,
+        "dynamic": true,
+        "info": "",
+        "load_from_db": false,
+        "title_case": false
+      },
+      "ignored_message": {
+        "trace_as_input": true,
+        "tool_mode": false,
+        "trace_as_metadata": true,
+        "load_from_db": false,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "ignored_message",
+        "value": "",
+        "display_name": "Ignored Message",
+        "advanced": true,
+        "input_types": [
+          "Message"
+        ],
+        "dynamic": false,
+        "info": "A second message to be ignored. Used as a workaround for continuity.",
+        "title_case": false,
+        "type": "str",
+        "_input_type": "MessageInput"
+      },
+      "input_message": {
+        "trace_as_input": true,
+        "tool_mode": false,
+        "trace_as_metadata": true,
+        "load_from_db": false,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": true,
+        "placeholder": "",
+        "show": true,
+        "name": "input_message",
+        "value": "",
+        "display_name": "Input Message",
+        "advanced": false,
+        "input_types": [
+          "Message"
+        ],
+        "dynamic": false,
+        "info": "The message to be passed forward.",
+        "title_case": false,
+        "type": "str",
+        "_input_type": "MessageInput"
+      }
+    },
+    "description": "Forwards the input message, unchanged.",
+    "icon": "arrow-right",
+    "base_classes": [
+      "Message"
+    ],
+    "display_name": "Pass",
+    "documentation": "",
+    "minimized": false,
+    "custom_fields": {},
+    "output_types": [],
+    "pinned": false,
+    "conditional_paths": [],
+    "frozen": false,
+    "outputs": [
+      {
+        "types": [
+          "Message"
+        ],
+        "selected": "Message",
+        "name": "output_message",
+        "display_name": "Output Message",
+        "method": "pass_message",
+        "value": "__UNDEFINED__",
+        "cache": true,
+        "allows_loop": false,
+        "tool_mode": true
+      }
+    ],
+    "field_order": [
+      "input_message",
+      "ignored_message"
+    ],
+    "beta": false,
+    "legacy": false,
+    "edited": false,
+    "metadata": {},
+    "tool_mode": false
+  }
+}

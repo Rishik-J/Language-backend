@@ -1,0 +1,3158 @@
+{
+  "SaveToFile": {
+    "template": {
+      "_type": "Component",
+      "data": {
+        "tool_mode": false,
+        "trace_as_metadata": true,
+        "list": false,
+        "list_add_label": "Add More",
+        "trace_as_input": true,
+        "required": false,
+        "placeholder": "",
+        "show": false,
+        "name": "data",
+        "value": "",
+        "display_name": "Data",
+        "advanced": false,
+        "input_types": [
+          "Data"
+        ],
+        "dynamic": true,
+        "info": "The Data object to save.",
+        "title_case": false,
+        "type": "other",
+        "_input_type": "DataInput"
+      },
+      "df": {
+        "tool_mode": false,
+        "trace_as_metadata": true,
+        "list": false,
+        "list_add_label": "Add More",
+        "trace_as_input": true,
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "df",
+        "value": "",
+        "display_name": "DataFrame",
+        "advanced": false,
+        "input_types": [
+          "DataFrame"
+        ],
+        "dynamic": true,
+        "info": "The DataFrame to save.",
+        "title_case": false,
+        "type": "other",
+        "_input_type": "DataFrameInput"
+      },
+      "code": {
+        "type": "code",
+        "required": true,
+        "placeholder": "",
+        "list": false,
+        "show": true,
+        "multiline": true,
+        "value": "import json\nfrom collections.abc import AsyncIterator, Iterator\nfrom pathlib import Path\n\nimport pandas as pd\n\nfrom langflow.custom import Component\nfrom langflow.io import (\n    DataFrameInput,\n    DataInput,\n    DropdownInput,\n    MessageInput,\n    Output,\n    StrInput,\n)\nfrom langflow.schema import Data, DataFrame, Message\n\n\nclass SaveToFileComponent(Component):\n    display_name = \"Save to File\"\n    description = \"Save DataFrames, Data, or Messages to various file formats.\"\n    icon = \"save\"\n    name = \"SaveToFile\"\n\n    # File format options for different types\n    DATA_FORMAT_CHOICES = [\"csv\", \"excel\", \"json\", \"markdown\"]\n    MESSAGE_FORMAT_CHOICES = [\"txt\", \"json\", \"markdown\"]\n\n    inputs = [\n        DropdownInput(\n            name=\"input_type\",\n            display_name=\"Input Type\",\n            options=[\"DataFrame\", \"Data\", \"Message\"],\n            info=\"Select the type of input to save.\",\n            value=\"DataFrame\",\n            real_time_refresh=True,\n        ),\n        DataFrameInput(\n            name=\"df\",\n            display_name=\"DataFrame\",\n            info=\"The DataFrame to save.\",\n            dynamic=True,\n            show=True,\n        ),\n        DataInput(\n            name=\"data\",\n            display_name=\"Data\",\n            info=\"The Data object to save.\",\n            dynamic=True,\n            show=False,\n        ),\n        MessageInput(\n            name=\"message\",\n            display_name=\"Message\",\n            info=\"The Message to save.\",\n            dynamic=True,\n            show=False,\n        ),\n        DropdownInput(\n            name=\"file_format\",\n            display_name=\"File Format\",\n            options=DATA_FORMAT_CHOICES,\n            info=\"Select the file format to save the input.\",\n            real_time_refresh=True,\n        ),\n        StrInput(\n            name=\"file_path\",\n            display_name=\"File Path (including filename)\",\n            info=\"The full file path (including filename and extension).\",\n            value=\"./output\",\n        ),\n    ]\n\n    outputs = [\n        Output(\n            name=\"confirmation\",\n            display_name=\"Confirmation\",\n            method=\"save_to_file\",\n            info=\"Confirmation message after saving the file.\",\n        ),\n    ]\n\n    def update_build_config(self, build_config, field_value, field_name=None):\n        # Hide/show dynamic fields based on the selected input type\n        if field_name == \"input_type\":\n            build_config[\"df\"][\"show\"] = field_value == \"DataFrame\"\n            build_config[\"data\"][\"show\"] = field_value == \"Data\"\n            build_config[\"message\"][\"show\"] = field_value == \"Message\"\n\n            if field_value in {\"DataFrame\", \"Data\"}:\n                build_config[\"file_format\"][\"options\"] = self.DATA_FORMAT_CHOICES\n            elif field_value == \"Message\":\n                build_config[\"file_format\"][\"options\"] = self.MESSAGE_FORMAT_CHOICES\n\n        return build_config\n\n    def save_to_file(self) -> str:\n        input_type = self.input_type\n        file_format = self.file_format\n        file_path = Path(self.file_path).expanduser()\n\n        # Ensure the directory exists\n        if not file_path.parent.exists():\n            file_path.parent.mkdir(parents=True, exist_ok=True)\n\n        file_path = self._adjust_file_path_with_format(file_path, file_format)\n\n        if input_type == \"DataFrame\":\n            dataframe = self.df\n            return self._save_dataframe(dataframe, file_path, file_format)\n        if input_type == \"Data\":\n            data = self.data\n            return self._save_data(data, file_path, file_format)\n        if input_type == \"Message\":\n            message = self.message\n            return self._save_message(message, file_path, file_format)\n\n        error_msg = f\"Unsupported input type: {input_type}\"\n        raise ValueError(error_msg)\n\n    def _adjust_file_path_with_format(self, path: Path, fmt: str) -> Path:\n        file_extension = path.suffix.lower().lstrip(\".\")\n\n        if fmt == \"excel\":\n            return Path(f\"{path}.xlsx\").expanduser() if file_extension not in [\"xlsx\", \"xls\"] else path\n\n        return Path(f\"{path}.{fmt}\").expanduser() if file_extension != fmt else path\n\n    def _save_dataframe(self, dataframe: DataFrame, path: Path, fmt: str) -> str:\n        if fmt == \"csv\":\n            dataframe.to_csv(path, index=False)\n        elif fmt == \"excel\":\n            dataframe.to_excel(path, index=False, engine=\"openpyxl\")\n        elif fmt == \"json\":\n            dataframe.to_json(path, orient=\"records\", indent=2)\n        elif fmt == \"markdown\":\n            path.write_text(dataframe.to_markdown(index=False), encoding=\"utf-8\")\n        else:\n            error_msg = f\"Unsupported DataFrame format: {fmt}\"\n            raise ValueError(error_msg)\n\n        return f\"DataFrame saved successfully as '{path}'\"\n\n    def _save_data(self, data: Data, path: Path, fmt: str) -> str:\n        if fmt == \"csv\":\n            pd.DataFrame(data.data).to_csv(path, index=False)\n        elif fmt == \"excel\":\n            pd.DataFrame(data.data).to_excel(path, index=False, engine=\"openpyxl\")\n        elif fmt == \"json\":\n            path.write_text(json.dumps(data.data, indent=2), encoding=\"utf-8\")\n        elif fmt == \"markdown\":\n            path.write_text(pd.DataFrame(data.data).to_markdown(index=False), encoding=\"utf-8\")\n        else:\n            error_msg = f\"Unsupported Data format: {fmt}\"\n            raise ValueError(error_msg)\n\n        return f\"Data saved successfully as '{path}'\"\n\n    def _save_message(self, message: Message, path: Path, fmt: str) -> str:\n        if message.text is None:\n            content = \"\"\n        elif isinstance(message.text, AsyncIterator):\n            # AsyncIterator needs to be handled differently\n            error_msg = \"AsyncIterator not supported\"\n            raise ValueError(error_msg)\n        elif isinstance(message.text, Iterator):\n            # Convert iterator to string\n            content = \" \".join(str(item) for item in message.text)\n        else:\n            content = str(message.text)\n\n        if fmt == \"txt\":\n            path.write_text(content, encoding=\"utf-8\")\n        elif fmt == \"json\":\n            path.write_text(json.dumps({\"message\": content}, indent=2), encoding=\"utf-8\")\n        elif fmt == \"markdown\":\n            path.write_text(f\"**Message:**\\n\\n{content}\", encoding=\"utf-8\")\n        else:\n            error_msg = f\"Unsupported Message format: {fmt}\"\n            raise ValueError(error_msg)\n\n        return f\"Message saved successfully as '{path}'\"\n",
+        "fileTypes": [],
+        "file_path": "",
+        "password": false,
+        "name": "code",
+        "advanced": true,
+        "dynamic": true,
+        "info": "",
+        "load_from_db": false,
+        "title_case": false
+      },
+      "file_format": {
+        "tool_mode": false,
+        "trace_as_metadata": true,
+        "options": [
+          "csv",
+          "excel",
+          "json",
+          "markdown"
+        ],
+        "options_metadata": [],
+        "combobox": false,
+        "dialog_inputs": {},
+        "toggle": false,
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "file_format",
+        "value": "",
+        "display_name": "File Format",
+        "advanced": false,
+        "dynamic": false,
+        "info": "Select the file format to save the input.",
+        "real_time_refresh": true,
+        "title_case": false,
+        "type": "str",
+        "_input_type": "DropdownInput"
+      },
+      "file_path": {
+        "tool_mode": false,
+        "trace_as_metadata": true,
+        "load_from_db": false,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "file_path",
+        "value": "./output",
+        "display_name": "File Path (including filename)",
+        "advanced": false,
+        "dynamic": false,
+        "info": "The full file path (including filename and extension).",
+        "title_case": false,
+        "type": "str",
+        "_input_type": "StrInput"
+      },
+      "input_type": {
+        "tool_mode": false,
+        "trace_as_metadata": true,
+        "options": [
+          "DataFrame",
+          "Data",
+          "Message"
+        ],
+        "options_metadata": [],
+        "combobox": false,
+        "dialog_inputs": {},
+        "toggle": false,
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "input_type",
+        "value": "DataFrame",
+        "display_name": "Input Type",
+        "advanced": false,
+        "dynamic": false,
+        "info": "Select the type of input to save.",
+        "real_time_refresh": true,
+        "title_case": false,
+        "type": "str",
+        "_input_type": "DropdownInput"
+      },
+      "message": {
+        "trace_as_input": true,
+        "tool_mode": false,
+        "trace_as_metadata": true,
+        "load_from_db": false,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": false,
+        "placeholder": "",
+        "show": false,
+        "name": "message",
+        "value": "",
+        "display_name": "Message",
+        "advanced": false,
+        "input_types": [
+          "Message"
+        ],
+        "dynamic": true,
+        "info": "The Message to save.",
+        "title_case": false,
+        "type": "str",
+        "_input_type": "MessageInput"
+      }
+    },
+    "description": "Save DataFrames, Data, or Messages to various file formats.",
+    "icon": "save",
+    "base_classes": [
+      "Text"
+    ],
+    "display_name": "Save to File",
+    "documentation": "",
+    "minimized": false,
+    "custom_fields": {},
+    "output_types": [],
+    "pinned": false,
+    "conditional_paths": [],
+    "frozen": false,
+    "outputs": [
+      {
+        "types": [
+          "Text"
+        ],
+        "selected": "Text",
+        "name": "confirmation",
+        "display_name": "Confirmation",
+        "method": "save_to_file",
+        "value": "__UNDEFINED__",
+        "cache": true,
+        "allows_loop": false,
+        "tool_mode": true
+      }
+    ],
+    "field_order": [
+      "input_type",
+      "df",
+      "data",
+      "message",
+      "file_format",
+      "file_path"
+    ],
+    "beta": false,
+    "legacy": false,
+    "edited": false,
+    "metadata": {},
+    "tool_mode": false
+  },
+  "LambdaFilter": {
+    "template": {
+      "_type": "Component",
+      "data": {
+        "tool_mode": false,
+        "trace_as_metadata": true,
+        "list": true,
+        "list_add_label": "Add More",
+        "trace_as_input": true,
+        "required": true,
+        "placeholder": "",
+        "show": true,
+        "name": "data",
+        "value": "",
+        "display_name": "Data",
+        "advanced": false,
+        "input_types": [
+          "Data"
+        ],
+        "dynamic": false,
+        "info": "The structured data to filter or transform using a lambda function.",
+        "title_case": false,
+        "type": "other",
+        "_input_type": "DataInput"
+      },
+      "llm": {
+        "trace_as_metadata": true,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": true,
+        "placeholder": "",
+        "show": true,
+        "name": "llm",
+        "value": "",
+        "display_name": "Language Model",
+        "advanced": false,
+        "input_types": [
+          "LanguageModel"
+        ],
+        "dynamic": false,
+        "info": "Connect the 'Language Model' output from your LLM component here.",
+        "title_case": false,
+        "type": "other",
+        "_input_type": "HandleInput"
+      },
+      "code": {
+        "type": "code",
+        "required": true,
+        "placeholder": "",
+        "list": false,
+        "show": true,
+        "multiline": true,
+        "value": "from __future__ import annotations\n\nimport json\nimport re\nfrom typing import TYPE_CHECKING, Any\n\nfrom langflow.custom import Component\nfrom langflow.io import DataInput, HandleInput, IntInput, MultilineInput, Output\nfrom langflow.schema import Data\nfrom langflow.schema.dataframe import DataFrame\nfrom langflow.utils.data_structure import get_data_structure\n\nif TYPE_CHECKING:\n    from collections.abc import Callable\n\n\nclass LambdaFilterComponent(Component):\n    display_name = \"Lambda Filter\"\n    description = \"Uses an LLM to generate a lambda function for filtering or transforming structured data.\"\n    icon = \"filter\"\n    name = \"LambdaFilter\"\n    beta = True\n\n    inputs = [\n        DataInput(\n            name=\"data\",\n            display_name=\"Data\",\n            info=\"The structured data to filter or transform using a lambda function.\",\n            is_list=True,\n            required=True,\n        ),\n        HandleInput(\n            name=\"llm\",\n            display_name=\"Language Model\",\n            info=\"Connect the 'Language Model' output from your LLM component here.\",\n            input_types=[\"LanguageModel\"],\n            required=True,\n        ),\n        MultilineInput(\n            name=\"filter_instruction\",\n            display_name=\"Instructions\",\n            info=(\n                \"Natural language instructions for how to filter or transform the data using a lambda function. \"\n                \"Example: Filter the data to only include items where the 'status' is 'active'.\"\n            ),\n            value=\"Filter the data to...\",\n            required=True,\n        ),\n        IntInput(\n            name=\"sample_size\",\n            display_name=\"Sample Size\",\n            info=\"For large datasets, number of items to sample from head/tail.\",\n            value=1000,\n            advanced=True,\n        ),\n        IntInput(\n            name=\"max_size\",\n            display_name=\"Max Size\",\n            info=\"Number of characters for the data to be considered large.\",\n            value=30000,\n            advanced=True,\n        ),\n    ]\n\n    outputs = [\n        Output(\n            display_name=\"Filtered Data\",\n            name=\"filtered_data\",\n            method=\"filter_data\",\n        ),\n        Output(\n            display_name=\"DataFrame\",\n            name=\"dataframe\",\n            method=\"as_dataframe\",\n        ),\n    ]\n\n    def get_data_structure(self, data):\n        \"\"\"Extract the structure of a dictionary, replacing values with their types.\"\"\"\n        return {k: get_data_structure(v) for k, v in data.items()}\n\n    def _validate_lambda(self, lambda_text: str) -> bool:\n        \"\"\"Validate the provided lambda function text.\"\"\"\n        # Return False if the lambda function does not start with 'lambda' or does not contain a colon\n        return lambda_text.strip().startswith(\"lambda\") and \":\" in lambda_text\n\n    async def filter_data(self) -> list[Data]:\n        self.log(str(self.data))\n        data = self.data[0].data if isinstance(self.data, list) else self.data.data\n\n        dump = json.dumps(data)\n        self.log(str(data))\n\n        llm = self.llm\n        instruction = self.filter_instruction\n        sample_size = self.sample_size\n\n        # Get data structure and samples\n        data_structure = self.get_data_structure(data)\n        dump_structure = json.dumps(data_structure)\n        self.log(dump_structure)\n\n        # For large datasets, sample from head and tail\n        if len(dump) > self.max_size:\n            data_sample = (\n                f\"Data is too long to display... \\n\\n First lines (head): {dump[:sample_size]} \\n\\n\"\n                f\" Last lines (tail): {dump[-sample_size:]})\"\n            )\n        else:\n            data_sample = dump\n\n        self.log(data_sample)\n\n        prompt = f\"\"\"Given this data structure and examples, create a Python lambda function that\n                    implements the following instruction:\n\n                    Data Structure:\n                    {dump_structure}\n\n                    Example Items:\n                    {data_sample}\n\n                    Instruction: {instruction}\n\n                    Return ONLY the lambda function and nothing else. No need for ```python or whatever.\n                    Just a string starting with lambda.\n                    \"\"\"\n\n        response = await llm.ainvoke(prompt)\n        response_text = response.content if hasattr(response, \"content\") else str(response)\n        self.log(response_text)\n\n        # Extract lambda using regex\n        lambda_match = re.search(r\"lambda\\s+\\w+\\s*:.*?(?=\\n|$)\", response_text)\n        if not lambda_match:\n            msg = f\"Could not find lambda in response: {response_text}\"\n            raise ValueError(msg)\n\n        lambda_text = lambda_match.group().strip()\n        self.log(lambda_text)\n\n        # Validation is commented out as requested\n        if not self._validate_lambda(lambda_text):\n            msg = f\"Invalid lambda format: {lambda_text}\"\n            raise ValueError(msg)\n\n        # Create and apply the function\n        fn: Callable[[Any], Any] = eval(lambda_text)  # noqa: S307\n\n        # Apply the lambda function to the data\n        processed_data = fn(data)\n\n        # If it's a dict, wrap it in a Data object\n        if isinstance(processed_data, dict):\n            return [Data(**processed_data)]\n        # If it's a list, convert each item to a Data object\n        if isinstance(processed_data, list):\n            return [Data(**item) if isinstance(item, dict) else Data(text=str(item)) for item in processed_data]\n        # If it's anything else, convert to string and wrap in a Data object\n        return [Data(text=str(processed_data))]\n\n    async def as_dataframe(self) -> DataFrame:\n        \"\"\"Return filtered data as a DataFrame.\"\"\"\n        filtered_data = await self.filter_data()\n        return DataFrame(filtered_data)\n",
+        "fileTypes": [],
+        "file_path": "",
+        "password": false,
+        "name": "code",
+        "advanced": true,
+        "dynamic": true,
+        "info": "",
+        "load_from_db": false,
+        "title_case": false
+      },
+      "filter_instruction": {
+        "tool_mode": false,
+        "trace_as_input": true,
+        "multiline": true,
+        "trace_as_metadata": true,
+        "load_from_db": false,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": true,
+        "placeholder": "",
+        "show": true,
+        "name": "filter_instruction",
+        "value": "Filter the data to...",
+        "display_name": "Instructions",
+        "advanced": false,
+        "input_types": [
+          "Message"
+        ],
+        "dynamic": false,
+        "info": "Natural language instructions for how to filter or transform the data using a lambda function. Example: Filter the data to only include items where the 'status' is 'active'.",
+        "title_case": false,
+        "copy_field": false,
+        "type": "str",
+        "_input_type": "MultilineInput"
+      },
+      "max_size": {
+        "tool_mode": false,
+        "trace_as_metadata": true,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "max_size",
+        "value": 30000,
+        "display_name": "Max Size",
+        "advanced": true,
+        "dynamic": false,
+        "info": "Number of characters for the data to be considered large.",
+        "title_case": false,
+        "type": "int",
+        "_input_type": "IntInput"
+      },
+      "sample_size": {
+        "tool_mode": false,
+        "trace_as_metadata": true,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "sample_size",
+        "value": 1000,
+        "display_name": "Sample Size",
+        "advanced": true,
+        "dynamic": false,
+        "info": "For large datasets, number of items to sample from head/tail.",
+        "title_case": false,
+        "type": "int",
+        "_input_type": "IntInput"
+      }
+    },
+    "description": "Uses an LLM to generate a lambda function for filtering or transforming structured data.",
+    "icon": "filter",
+    "base_classes": [
+      "Data",
+      "DataFrame"
+    ],
+    "display_name": "Lambda Filter",
+    "documentation": "",
+    "minimized": false,
+    "custom_fields": {},
+    "output_types": [],
+    "pinned": false,
+    "conditional_paths": [],
+    "frozen": false,
+    "outputs": [
+      {
+        "types": [
+          "Data"
+        ],
+        "selected": "Data",
+        "name": "filtered_data",
+        "display_name": "Filtered Data",
+        "method": "filter_data",
+        "value": "__UNDEFINED__",
+        "cache": true,
+        "allows_loop": false,
+        "tool_mode": true
+      },
+      {
+        "types": [
+          "DataFrame"
+        ],
+        "selected": "DataFrame",
+        "name": "dataframe",
+        "display_name": "DataFrame",
+        "method": "as_dataframe",
+        "value": "__UNDEFINED__",
+        "cache": true,
+        "allows_loop": false,
+        "tool_mode": true
+      }
+    ],
+    "field_order": [
+      "data",
+      "llm",
+      "filter_instruction",
+      "sample_size",
+      "max_size"
+    ],
+    "beta": true,
+    "legacy": false,
+    "edited": false,
+    "metadata": {},
+    "tool_mode": false
+  },
+  "UpdateData": {
+    "template": {
+      "_type": "Component",
+      "old_data": {
+        "tool_mode": false,
+        "trace_as_metadata": true,
+        "list": true,
+        "list_add_label": "Add More",
+        "trace_as_input": true,
+        "required": true,
+        "placeholder": "",
+        "show": true,
+        "name": "old_data",
+        "value": "",
+        "display_name": "Data",
+        "advanced": false,
+        "input_types": [
+          "Data"
+        ],
+        "dynamic": false,
+        "info": "The record to update.",
+        "title_case": false,
+        "type": "other",
+        "_input_type": "DataInput"
+      },
+      "code": {
+        "type": "code",
+        "required": true,
+        "placeholder": "",
+        "list": false,
+        "show": true,
+        "multiline": true,
+        "value": "from typing import Any\n\nfrom langflow.custom import Component\nfrom langflow.field_typing.range_spec import RangeSpec\nfrom langflow.inputs.inputs import (\n    BoolInput,\n    DataInput,\n    DictInput,\n    IntInput,\n    MessageTextInput,\n)\nfrom langflow.io import Output\nfrom langflow.schema import Data\nfrom langflow.schema.dotdict import dotdict\n\n\nclass UpdateDataComponent(Component):\n    display_name: str = \"Update Data\"\n    description: str = \"Dynamically update or append data with the specified fields.\"\n    name: str = \"UpdateData\"\n    MAX_FIELDS = 15  # Define a constant for maximum number of fields\n    icon = \"FolderSync\"\n\n    inputs = [\n        DataInput(\n            name=\"old_data\",\n            display_name=\"Data\",\n            info=\"The record to update.\",\n            is_list=True,  # Changed to True to handle list of Data objects\n            required=True,\n        ),\n        IntInput(\n            name=\"number_of_fields\",\n            display_name=\"Number of Fields\",\n            info=\"Number of fields to be added to the record.\",\n            real_time_refresh=True,\n            value=0,\n            range_spec=RangeSpec(min=1, max=MAX_FIELDS, step=1, step_type=\"int\"),\n        ),\n        MessageTextInput(\n            name=\"text_key\",\n            display_name=\"Text Key\",\n            info=\"Key that identifies the field to be used as the text content.\",\n            advanced=True,\n        ),\n        BoolInput(\n            name=\"text_key_validator\",\n            display_name=\"Text Key Validator\",\n            advanced=True,\n            info=\"If enabled, checks if the given 'Text Key' is present in the given 'Data'.\",\n        ),\n    ]\n\n    outputs = [\n        Output(display_name=\"Data\", name=\"data\", method=\"build_data\"),\n    ]\n\n    def update_build_config(self, build_config: dotdict, field_value: Any, field_name: str | None = None):\n        \"\"\"Update the build configuration when the number of fields changes.\n\n        Args:\n            build_config (dotdict): The current build configuration.\n            field_value (Any): The new value for the field.\n            field_name (Optional[str]): The name of the field being updated.\n        \"\"\"\n        if field_name == \"number_of_fields\":\n            default_keys = {\n                \"code\",\n                \"_type\",\n                \"number_of_fields\",\n                \"text_key\",\n                \"old_data\",\n                \"text_key_validator\",\n            }\n            try:\n                field_value_int = int(field_value)\n            except ValueError:\n                return build_config\n\n            if field_value_int > self.MAX_FIELDS:\n                build_config[\"number_of_fields\"][\"value\"] = self.MAX_FIELDS\n                msg = f\"Number of fields cannot exceed {self.MAX_FIELDS}. Try using a Component to combine two Data.\"\n                raise ValueError(msg)\n\n            existing_fields = {}\n            # Back up the existing template fields\n            for key in list(build_config.keys()):\n                if key not in default_keys:\n                    existing_fields[key] = build_config.pop(key)\n\n            for i in range(1, field_value_int + 1):\n                key = f\"field_{i}_key\"\n                if key in existing_fields:\n                    field = existing_fields[key]\n                    build_config[key] = field\n                else:\n                    field = DictInput(\n                        display_name=f\"Field {i}\",\n                        name=key,\n                        info=f\"Key for field {i}.\",\n                        input_types=[\"Message\", \"Data\"],\n                    )\n                    build_config[field.name] = field.to_dict()\n\n            build_config[\"number_of_fields\"][\"value\"] = field_value_int\n        return build_config\n\n    async def build_data(self) -> Data | list[Data]:\n        \"\"\"Build the updated data by combining the old data with new fields.\"\"\"\n        new_data = self.get_data()\n        if isinstance(self.old_data, list):\n            for data_item in self.old_data:\n                if not isinstance(data_item, Data):\n                    continue  # Skip invalid items\n                data_item.data.update(new_data)\n                if self.text_key:\n                    data_item.text_key = self.text_key\n                self.validate_text_key(data_item)\n            self.status = self.old_data\n            return self.old_data  # Returns List[Data]\n        if isinstance(self.old_data, Data):\n            self.old_data.data.update(new_data)\n            if self.text_key:\n                self.old_data.text_key = self.text_key\n            self.status = self.old_data\n            self.validate_text_key(self.old_data)\n            return self.old_data  # Returns Data\n        msg = \"old_data is not a Data object or list of Data objects.\"\n        raise ValueError(msg)\n\n    def get_data(self):\n        \"\"\"Function to get the Data from the attributes.\"\"\"\n        data = {}\n        default_keys = {\n            \"code\",\n            \"_type\",\n            \"number_of_fields\",\n            \"text_key\",\n            \"old_data\",\n            \"text_key_validator\",\n        }\n        for attr_name, attr_value in self._attributes.items():\n            if attr_name in default_keys:\n                continue  # Skip default attributes\n            if isinstance(attr_value, dict):\n                for key, value in attr_value.items():\n                    data[key] = value.get_text() if isinstance(value, Data) else value\n            elif isinstance(attr_value, Data):\n                data[attr_name] = attr_value.get_text()\n            else:\n                data[attr_name] = attr_value\n        return data\n\n    def validate_text_key(self, data: Data) -> None:\n        \"\"\"This function validates that the Text Key is one of the keys in the Data.\"\"\"\n        data_keys = data.data.keys()\n        if self.text_key and self.text_key not in data_keys:\n            msg = f\"Text Key: '{self.text_key}' not found in the Data keys: {', '.join(data_keys)}\"\n            raise ValueError(msg)\n",
+        "fileTypes": [],
+        "file_path": "",
+        "password": false,
+        "name": "code",
+        "advanced": true,
+        "dynamic": true,
+        "info": "",
+        "load_from_db": false,
+        "title_case": false
+      },
+      "number_of_fields": {
+        "tool_mode": false,
+        "trace_as_metadata": true,
+        "range_spec": {
+          "step_type": "int",
+          "min": 1,
+          "max": 15,
+          "step": 1
+        },
+        "list": false,
+        "list_add_label": "Add More",
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "number_of_fields",
+        "value": 0,
+        "display_name": "Number of Fields",
+        "advanced": false,
+        "dynamic": false,
+        "info": "Number of fields to be added to the record.",
+        "real_time_refresh": true,
+        "title_case": false,
+        "type": "int",
+        "_input_type": "IntInput"
+      },
+      "text_key": {
+        "tool_mode": false,
+        "trace_as_input": true,
+        "trace_as_metadata": true,
+        "load_from_db": false,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "text_key",
+        "value": "",
+        "display_name": "Text Key",
+        "advanced": true,
+        "input_types": [
+          "Message"
+        ],
+        "dynamic": false,
+        "info": "Key that identifies the field to be used as the text content.",
+        "title_case": false,
+        "type": "str",
+        "_input_type": "MessageTextInput"
+      },
+      "text_key_validator": {
+        "tool_mode": false,
+        "trace_as_metadata": true,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "text_key_validator",
+        "value": false,
+        "display_name": "Text Key Validator",
+        "advanced": true,
+        "dynamic": false,
+        "info": "If enabled, checks if the given 'Text Key' is present in the given 'Data'.",
+        "title_case": false,
+        "type": "bool",
+        "_input_type": "BoolInput"
+      }
+    },
+    "description": "Dynamically update or append data with the specified fields.",
+    "icon": "FolderSync",
+    "base_classes": [
+      "Data"
+    ],
+    "display_name": "Update Data",
+    "documentation": "",
+    "minimized": false,
+    "custom_fields": {},
+    "output_types": [],
+    "pinned": false,
+    "conditional_paths": [],
+    "frozen": false,
+    "outputs": [
+      {
+        "types": [
+          "Data"
+        ],
+        "selected": "Data",
+        "name": "data",
+        "display_name": "Data",
+        "method": "build_data",
+        "value": "__UNDEFINED__",
+        "cache": true,
+        "allows_loop": false,
+        "tool_mode": true
+      }
+    ],
+    "field_order": [
+      "old_data",
+      "number_of_fields",
+      "text_key",
+      "text_key_validator"
+    ],
+    "beta": false,
+    "legacy": false,
+    "edited": false,
+    "metadata": {},
+    "tool_mode": false
+  },
+  "CombineText": {
+    "template": {
+      "_type": "Component",
+      "code": {
+        "type": "code",
+        "required": true,
+        "placeholder": "",
+        "list": false,
+        "show": true,
+        "multiline": true,
+        "value": "from langflow.custom import Component\nfrom langflow.io import MessageTextInput, Output\nfrom langflow.schema.message import Message\n\n\nclass CombineTextComponent(Component):\n    display_name = \"Combine Text\"\n    description = \"Concatenate two text sources into a single text chunk using a specified delimiter.\"\n    icon = \"merge\"\n    name = \"CombineText\"\n\n    inputs = [\n        MessageTextInput(\n            name=\"text1\",\n            display_name=\"First Text\",\n            info=\"The first text input to concatenate.\",\n        ),\n        MessageTextInput(\n            name=\"text2\",\n            display_name=\"Second Text\",\n            info=\"The second text input to concatenate.\",\n        ),\n        MessageTextInput(\n            name=\"delimiter\",\n            display_name=\"Delimiter\",\n            info=\"A string used to separate the two text inputs. Defaults to a whitespace.\",\n            value=\" \",\n        ),\n    ]\n\n    outputs = [\n        Output(display_name=\"Combined Text\", name=\"combined_text\", method=\"combine_texts\"),\n    ]\n\n    def combine_texts(self) -> Message:\n        combined = self.delimiter.join([self.text1, self.text2])\n        self.status = combined\n        return Message(text=combined)\n",
+        "fileTypes": [],
+        "file_path": "",
+        "password": false,
+        "name": "code",
+        "advanced": true,
+        "dynamic": true,
+        "info": "",
+        "load_from_db": false,
+        "title_case": false
+      },
+      "delimiter": {
+        "tool_mode": false,
+        "trace_as_input": true,
+        "trace_as_metadata": true,
+        "load_from_db": false,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "delimiter",
+        "value": " ",
+        "display_name": "Delimiter",
+        "advanced": false,
+        "input_types": [
+          "Message"
+        ],
+        "dynamic": false,
+        "info": "A string used to separate the two text inputs. Defaults to a whitespace.",
+        "title_case": false,
+        "type": "str",
+        "_input_type": "MessageTextInput"
+      },
+      "text1": {
+        "tool_mode": false,
+        "trace_as_input": true,
+        "trace_as_metadata": true,
+        "load_from_db": false,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "text1",
+        "value": "",
+        "display_name": "First Text",
+        "advanced": false,
+        "input_types": [
+          "Message"
+        ],
+        "dynamic": false,
+        "info": "The first text input to concatenate.",
+        "title_case": false,
+        "type": "str",
+        "_input_type": "MessageTextInput"
+      },
+      "text2": {
+        "tool_mode": false,
+        "trace_as_input": true,
+        "trace_as_metadata": true,
+        "load_from_db": false,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "text2",
+        "value": "",
+        "display_name": "Second Text",
+        "advanced": false,
+        "input_types": [
+          "Message"
+        ],
+        "dynamic": false,
+        "info": "The second text input to concatenate.",
+        "title_case": false,
+        "type": "str",
+        "_input_type": "MessageTextInput"
+      }
+    },
+    "description": "Concatenate two text sources into a single text chunk using a specified delimiter.",
+    "icon": "merge",
+    "base_classes": [
+      "Message"
+    ],
+    "display_name": "Combine Text",
+    "documentation": "",
+    "minimized": false,
+    "custom_fields": {},
+    "output_types": [],
+    "pinned": false,
+    "conditional_paths": [],
+    "frozen": false,
+    "outputs": [
+      {
+        "types": [
+          "Message"
+        ],
+        "selected": "Message",
+        "name": "combined_text",
+        "display_name": "Combined Text",
+        "method": "combine_texts",
+        "value": "__UNDEFINED__",
+        "cache": true,
+        "allows_loop": false,
+        "tool_mode": true
+      }
+    ],
+    "field_order": [
+      "text1",
+      "text2",
+      "delimiter"
+    ],
+    "beta": false,
+    "legacy": false,
+    "edited": false,
+    "metadata": {},
+    "tool_mode": false
+  },
+  "ParseDataFrame": {
+    "template": {
+      "_type": "Component",
+      "df": {
+        "tool_mode": false,
+        "trace_as_metadata": true,
+        "list": false,
+        "list_add_label": "Add More",
+        "trace_as_input": true,
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "df",
+        "value": "",
+        "display_name": "DataFrame",
+        "advanced": false,
+        "input_types": [
+          "DataFrame"
+        ],
+        "dynamic": false,
+        "info": "The DataFrame to convert to text rows.",
+        "title_case": false,
+        "type": "other",
+        "_input_type": "DataFrameInput"
+      },
+      "code": {
+        "type": "code",
+        "required": true,
+        "placeholder": "",
+        "list": false,
+        "show": true,
+        "multiline": true,
+        "value": "from langflow.custom import Component\nfrom langflow.io import DataFrameInput, MultilineInput, Output, StrInput\nfrom langflow.schema.message import Message\n\n\nclass ParseDataFrameComponent(Component):\n    display_name = \"Parse DataFrame\"\n    description = (\n        \"Convert a DataFrame into plain text following a specified template. \"\n        \"Each column in the DataFrame is treated as a possible template key, e.g. {col_name}.\"\n    )\n    icon = \"braces\"\n    name = \"ParseDataFrame\"\n    legacy = True\n\n    inputs = [\n        DataFrameInput(name=\"df\", display_name=\"DataFrame\", info=\"The DataFrame to convert to text rows.\"),\n        MultilineInput(\n            name=\"template\",\n            display_name=\"Template\",\n            info=(\n                \"The template for formatting each row. \"\n                \"Use placeholders matching column names in the DataFrame, for example '{col1}', '{col2}'.\"\n            ),\n            value=\"{text}\",\n        ),\n        StrInput(\n            name=\"sep\",\n            display_name=\"Separator\",\n            advanced=True,\n            value=\"\\n\",\n            info=\"String that joins all row texts when building the single Text output.\",\n        ),\n    ]\n\n    outputs = [\n        Output(\n            display_name=\"Text\",\n            name=\"text\",\n            info=\"All rows combined into a single text, each row formatted by the template and separated by `sep`.\",\n            method=\"parse_data\",\n        ),\n    ]\n\n    def _clean_args(self):\n        dataframe = self.df\n        template = self.template or \"{text}\"\n        sep = self.sep or \"\\n\"\n        return dataframe, template, sep\n\n    def parse_data(self) -> Message:\n        \"\"\"Converts each row of the DataFrame into a formatted string using the template.\n\n        then joins them with `sep`. Returns a single combined string as a Message.\n        \"\"\"\n        dataframe, template, sep = self._clean_args()\n\n        lines = []\n        # For each row in the DataFrame, build a dict and format\n        for _, row in dataframe.iterrows():\n            row_dict = row.to_dict()\n            text_line = template.format(**row_dict)  # e.g. template=\"{text}\", row_dict={\"text\": \"Hello\"}\n            lines.append(text_line)\n\n        # Join all lines with the provided separator\n        result_string = sep.join(lines)\n        self.status = result_string  # store in self.status for UI logs\n        return Message(text=result_string)\n",
+        "fileTypes": [],
+        "file_path": "",
+        "password": false,
+        "name": "code",
+        "advanced": true,
+        "dynamic": true,
+        "info": "",
+        "load_from_db": false,
+        "title_case": false
+      },
+      "sep": {
+        "tool_mode": false,
+        "trace_as_metadata": true,
+        "load_from_db": false,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "sep",
+        "value": "\n",
+        "display_name": "Separator",
+        "advanced": true,
+        "dynamic": false,
+        "info": "String that joins all row texts when building the single Text output.",
+        "title_case": false,
+        "type": "str",
+        "_input_type": "StrInput"
+      },
+      "template": {
+        "tool_mode": false,
+        "trace_as_input": true,
+        "multiline": true,
+        "trace_as_metadata": true,
+        "load_from_db": false,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "template",
+        "value": "{text}",
+        "display_name": "Template",
+        "advanced": false,
+        "input_types": [
+          "Message"
+        ],
+        "dynamic": false,
+        "info": "The template for formatting each row. Use placeholders matching column names in the DataFrame, for example '{col1}', '{col2}'.",
+        "title_case": false,
+        "copy_field": false,
+        "type": "str",
+        "_input_type": "MultilineInput"
+      }
+    },
+    "description": "Convert a DataFrame into plain text following a specified template. Each column in the DataFrame is treated as a possible template key, e.g. {col_name}.",
+    "icon": "braces",
+    "base_classes": [
+      "Message"
+    ],
+    "display_name": "Parse DataFrame",
+    "documentation": "",
+    "minimized": false,
+    "custom_fields": {},
+    "output_types": [],
+    "pinned": false,
+    "conditional_paths": [],
+    "frozen": false,
+    "outputs": [
+      {
+        "types": [
+          "Message"
+        ],
+        "selected": "Message",
+        "name": "text",
+        "display_name": "Text",
+        "method": "parse_data",
+        "value": "__UNDEFINED__",
+        "cache": true,
+        "allows_loop": false,
+        "tool_mode": true
+      }
+    ],
+    "field_order": [
+      "df",
+      "template",
+      "sep"
+    ],
+    "beta": false,
+    "legacy": true,
+    "edited": false,
+    "metadata": {},
+    "tool_mode": false
+  },
+  "AlterMetadata": {
+    "template": {
+      "_type": "Component",
+      "input_value": {
+        "trace_as_metadata": true,
+        "list": true,
+        "list_add_label": "Add More",
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "input_value",
+        "value": "",
+        "display_name": "Input",
+        "advanced": false,
+        "input_types": [
+          "Message",
+          "Data"
+        ],
+        "dynamic": false,
+        "info": "Object(s) to which Metadata should be added",
+        "title_case": false,
+        "type": "other",
+        "_input_type": "HandleInput"
+      },
+      "code": {
+        "type": "code",
+        "required": true,
+        "placeholder": "",
+        "list": false,
+        "show": true,
+        "multiline": true,
+        "value": "from langflow.custom import Component\nfrom langflow.inputs import MessageTextInput\nfrom langflow.io import HandleInput, NestedDictInput, Output, StrInput\nfrom langflow.schema import Data, DataFrame\n\n\nclass AlterMetadataComponent(Component):\n    display_name = \"Alter Metadata\"\n    description = \"Adds/Removes Metadata Dictionary on inputs\"\n    icon = \"merge\"\n    name = \"AlterMetadata\"\n    legacy = True\n\n    inputs = [\n        HandleInput(\n            name=\"input_value\",\n            display_name=\"Input\",\n            info=\"Object(s) to which Metadata should be added\",\n            required=False,\n            input_types=[\"Message\", \"Data\"],\n            is_list=True,\n        ),\n        StrInput(\n            name=\"text_in\",\n            display_name=\"User Text\",\n            info=\"Text input; value will be in 'text' attribute of Data object. Empty text entries are ignored.\",\n            required=False,\n        ),\n        NestedDictInput(\n            name=\"metadata\",\n            display_name=\"Metadata\",\n            info=\"Metadata to add to each object\",\n            input_types=[\"Data\"],\n            required=True,\n        ),\n        MessageTextInput(\n            name=\"remove_fields\",\n            display_name=\"Fields to Remove\",\n            info=\"Metadata Fields to Remove\",\n            required=False,\n            is_list=True,\n        ),\n    ]\n\n    outputs = [\n        Output(\n            name=\"data\",\n            display_name=\"Data\",\n            info=\"List of Input objects each with added Metadata\",\n            method=\"process_output\",\n        ),\n        Output(\n            display_name=\"DataFrame\",\n            name=\"dataframe\",\n            info=\"Data objects as a DataFrame, with metadata as columns\",\n            method=\"as_dataframe\",\n        ),\n    ]\n\n    def _as_clean_dict(self, obj):\n        \"\"\"Convert a Data object or a standard dictionary to a standard dictionary.\"\"\"\n        if isinstance(obj, dict):\n            as_dict = obj\n        elif isinstance(obj, Data):\n            as_dict = obj.data\n        else:\n            msg = f\"Expected a Data object or a dictionary but got {type(obj)}.\"\n            raise TypeError(msg)\n\n        return {k: v for k, v in (as_dict or {}).items() if k and k.strip()}\n\n    def process_output(self) -> list[Data]:\n        # Ensure metadata is a dictionary, filtering out any empty keys\n        metadata = self._as_clean_dict(self.metadata)\n\n        # Convert text_in to a Data object if it exists, and initialize our list of Data objects\n        data_objects = [Data(text=self.text_in)] if self.text_in else []\n\n        # Append existing Data objects from input_value, if any\n        if self.input_value:\n            data_objects.extend(self.input_value)\n\n        # Update each Data object with the new metadata, preserving existing fields\n        for data in data_objects:\n            data.data.update(metadata)\n\n        # Handle removal of fields specified in remove_fields\n        if self.remove_fields:\n            fields_to_remove = {field.strip() for field in self.remove_fields if field.strip()}\n\n            # Remove specified fields from each Data object's metadata\n            for data in data_objects:\n                data.data = {k: v for k, v in data.data.items() if k not in fields_to_remove}\n\n        # Set the status for tracking/debugging purposes\n        self.status = data_objects\n        return data_objects\n\n    def as_dataframe(self) -> DataFrame:\n        \"\"\"Convert the processed data objects into a DataFrame.\n\n        Returns:\n            DataFrame: A DataFrame where each row corresponds to a Data object,\n                    with metadata fields as columns.\n        \"\"\"\n        data_list = self.process_output()\n        return DataFrame(data_list)\n",
+        "fileTypes": [],
+        "file_path": "",
+        "password": false,
+        "name": "code",
+        "advanced": true,
+        "dynamic": true,
+        "info": "",
+        "load_from_db": false,
+        "title_case": false
+      },
+      "metadata": {
+        "tool_mode": false,
+        "trace_as_input": true,
+        "trace_as_metadata": true,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": true,
+        "placeholder": "",
+        "show": true,
+        "name": "metadata",
+        "value": {},
+        "display_name": "Metadata",
+        "advanced": false,
+        "input_types": [
+          "Data"
+        ],
+        "dynamic": false,
+        "info": "Metadata to add to each object",
+        "title_case": false,
+        "type": "NestedDict",
+        "_input_type": "NestedDictInput"
+      },
+      "remove_fields": {
+        "tool_mode": false,
+        "trace_as_input": true,
+        "trace_as_metadata": true,
+        "load_from_db": false,
+        "list": true,
+        "list_add_label": "Add More",
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "remove_fields",
+        "value": "",
+        "display_name": "Fields to Remove",
+        "advanced": false,
+        "input_types": [
+          "Message"
+        ],
+        "dynamic": false,
+        "info": "Metadata Fields to Remove",
+        "title_case": false,
+        "type": "str",
+        "_input_type": "MessageTextInput"
+      },
+      "text_in": {
+        "tool_mode": false,
+        "trace_as_metadata": true,
+        "load_from_db": false,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "text_in",
+        "value": "",
+        "display_name": "User Text",
+        "advanced": false,
+        "dynamic": false,
+        "info": "Text input; value will be in 'text' attribute of Data object. Empty text entries are ignored.",
+        "title_case": false,
+        "type": "str",
+        "_input_type": "StrInput"
+      }
+    },
+    "description": "Adds/Removes Metadata Dictionary on inputs",
+    "icon": "merge",
+    "base_classes": [
+      "Data",
+      "DataFrame"
+    ],
+    "display_name": "Alter Metadata",
+    "documentation": "",
+    "minimized": false,
+    "custom_fields": {},
+    "output_types": [],
+    "pinned": false,
+    "conditional_paths": [],
+    "frozen": false,
+    "outputs": [
+      {
+        "types": [
+          "Data"
+        ],
+        "selected": "Data",
+        "name": "data",
+        "display_name": "Data",
+        "method": "process_output",
+        "value": "__UNDEFINED__",
+        "cache": true,
+        "allows_loop": false,
+        "tool_mode": true
+      },
+      {
+        "types": [
+          "DataFrame"
+        ],
+        "selected": "DataFrame",
+        "name": "dataframe",
+        "display_name": "DataFrame",
+        "method": "as_dataframe",
+        "value": "__UNDEFINED__",
+        "cache": true,
+        "allows_loop": false,
+        "tool_mode": true
+      }
+    ],
+    "field_order": [
+      "input_value",
+      "text_in",
+      "metadata",
+      "remove_fields"
+    ],
+    "beta": false,
+    "legacy": true,
+    "edited": false,
+    "metadata": {},
+    "tool_mode": false
+  },
+  "LLMRouterComponent": {
+    "template": {
+      "_type": "Component",
+      "input_value": {
+        "trace_as_metadata": true,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "input_value",
+        "value": "",
+        "display_name": "Input",
+        "advanced": false,
+        "input_types": [
+          "Message"
+        ],
+        "dynamic": false,
+        "info": "The input message to be routed",
+        "title_case": false,
+        "type": "other",
+        "_input_type": "HandleInput"
+      },
+      "judge_llm": {
+        "trace_as_metadata": true,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "judge_llm",
+        "value": "",
+        "display_name": "Judge LLM",
+        "advanced": false,
+        "input_types": [
+          "LanguageModel"
+        ],
+        "dynamic": false,
+        "info": "LLM that will evaluate and select the most appropriate model",
+        "title_case": false,
+        "type": "other",
+        "_input_type": "HandleInput"
+      },
+      "models": {
+        "trace_as_metadata": true,
+        "list": true,
+        "list_add_label": "Add More",
+        "required": true,
+        "placeholder": "",
+        "show": true,
+        "name": "models",
+        "value": "",
+        "display_name": "Language Models",
+        "advanced": false,
+        "input_types": [
+          "LanguageModel"
+        ],
+        "dynamic": false,
+        "info": "List of LLMs to route between",
+        "title_case": false,
+        "type": "other",
+        "_input_type": "HandleInput"
+      },
+      "code": {
+        "type": "code",
+        "required": true,
+        "placeholder": "",
+        "list": false,
+        "show": true,
+        "multiline": true,
+        "value": "import json\n\nimport requests\n\nfrom langflow.base.models.chat_result import get_chat_result\nfrom langflow.base.models.model_utils import get_model_name\nfrom langflow.custom import Component\nfrom langflow.io import DropdownInput, HandleInput, Output\nfrom langflow.schema.message import Message\n\n\nclass LLMRouterComponent(Component):\n    display_name = \"LLM Router\"\n    description = \"Routes the input to the most appropriate LLM based on OpenRouter model specifications\"\n    icon = \"git-branch\"\n\n    inputs = [\n        HandleInput(\n            name=\"models\",\n            display_name=\"Language Models\",\n            input_types=[\"LanguageModel\"],\n            required=True,\n            is_list=True,\n            info=\"List of LLMs to route between\",\n        ),\n        HandleInput(\n            name=\"input_value\",\n            display_name=\"Input\",\n            input_types=[\"Message\"],\n            info=\"The input message to be routed\",\n        ),\n        HandleInput(\n            name=\"judge_llm\",\n            display_name=\"Judge LLM\",\n            input_types=[\"LanguageModel\"],\n            info=\"LLM that will evaluate and select the most appropriate model\",\n        ),\n        DropdownInput(\n            name=\"optimization\",\n            display_name=\"Optimization\",\n            options=[\"quality\", \"speed\", \"cost\", \"balanced\"],\n            value=\"balanced\",\n            info=\"Optimization preference for model selection\",\n        ),\n    ]\n\n    outputs = [\n        Output(display_name=\"Output\", name=\"output\", method=\"route_to_model\"),\n        Output(\n            display_name=\"Selected Model\",\n            name=\"selected_model\",\n            method=\"get_selected_model\",\n            required_inputs=[\"output\"],\n        ),\n    ]\n\n    _selected_model_name: str | None = None\n\n    def get_selected_model(self) -> str:\n        return self._selected_model_name or \"\"\n\n    def _get_model_specs(self, model_name: str) -> str:\n        \"\"\"Fetch specific model information from OpenRouter API.\"\"\"\n        http_success = 200\n        base_info = f\"Model: {model_name}\\n\"\n\n        # Remove any special characters and spaces, keep only alphanumeric\n        clean_name = \"\".join(c.lower() for c in model_name if c.isalnum())\n        url = f\"https://openrouter.ai/api/v1/models/{clean_name}/endpoints\"\n\n        try:\n            response = requests.get(url, timeout=10)\n        except requests.exceptions.RequestException as e:\n            return base_info + f\"Error fetching specs: {e!s}\"\n\n        if response.status_code != http_success:\n            return base_info + \"No specifications available\"\n\n        try:\n            data = response.json().get(\"data\", {})\n        except (json.JSONDecodeError, requests.exceptions.JSONDecodeError):\n            return base_info + \"Error parsing response data\"\n\n        # Extract relevant information\n        context_length = data.get(\"context_length\", \"Unknown\")\n        max_completion_tokens = data.get(\"max_completion_tokens\", \"Unknown\")\n        architecture = data.get(\"architecture\", {})\n        tokenizer = architecture.get(\"tokenizer\", \"Unknown\")\n        instruct_type = architecture.get(\"instruct_type\", \"Unknown\")\n\n        pricing = data.get(\"pricing\", {})\n        prompt_price = pricing.get(\"prompt\", \"Unknown\")\n        completion_price = pricing.get(\"completion\", \"Unknown\")\n\n        description = data.get(\"description\", \"No description available\")\n        created = data.get(\"created\", \"Unknown\")\n\n        return f\"\"\"\nModel: {model_name}\nDescription: {description}\nContext Length: {context_length} tokens\nMax Completion Tokens: {max_completion_tokens}\nTokenizer: {tokenizer}\nInstruct Type: {instruct_type}\nPricing: ${prompt_price}/1k tokens (prompt), ${completion_price}/1k tokens (completion)\nCreated: {created}\n\"\"\"\n\n    MISSING_INPUTS_MSG = \"Missing required inputs: models, input_value, or judge_llm\"\n\n    async def route_to_model(self) -> Message:\n        if not self.models or not self.input_value or not self.judge_llm:\n            raise ValueError(self.MISSING_INPUTS_MSG)\n\n        system_prompt = {\n            \"role\": \"system\",\n            \"content\": (\n                \"You are a model selection expert. Analyze the input and select the most \"\n                \"appropriate model based on:\\n\"\n                \"1. Task complexity and requirements\\n\"\n                \"2. Context length needed\\n\"\n                \"3. Model capabilities\\n\"\n                \"4. Cost considerations\\n\"\n                \"5. Speed requirements\\n\\n\"\n                \"Consider the detailed model specifications provided and the user's \"\n                \"optimization preference. Return only the index number (0-based) of the best model.\"\n            ),\n        }\n\n        # Create list of available models with their detailed specs\n        models_info = []\n        for i, model in enumerate(self.models):\n            model_name = get_model_name(model)\n            model_specs = self._get_model_specs(model_name)\n            models_info.append(f\"=== Model {i} ===\\n{model_specs}\")\n\n        models_str = \"\\n\\n\".join(models_info)\n\n        user_message = {\n            \"role\": \"user\",\n            \"content\": f\"\"\"Available Models with Specifications:\\n{models_str}\\n\n            Optimization Preference: {self.optimization}\\n\n            Input Query: \"{self.input_value.text}\"\\n\n            Based on the model specifications and optimization preference,\n            select the most appropriate model (return only the index number):\"\"\",\n        }\n\n        try:\n            # Get judge's decision\n            response = await self.judge_llm.ainvoke([system_prompt, user_message])\n\n            try:\n                selected_index = int(response.content.strip())\n                if 0 <= selected_index < len(self.models):\n                    chosen_model = self.models[selected_index]\n                    self._selected_model_name = get_model_name(chosen_model)\n                else:\n                    chosen_model = self.models[0]\n                    self._selected_model_name = get_model_name(chosen_model)\n            except ValueError:\n                chosen_model = self.models[0]\n                self._selected_model_name = get_model_name(chosen_model)\n\n            # Get response from chosen model\n            return get_chat_result(\n                runnable=chosen_model,\n                input_value=self.input_value,\n            )\n\n        except (RuntimeError, ValueError) as e:\n            self.status = f\"Error: {e!s}\"\n            # Fallback to first model\n            chosen_model = self.models[0]\n            self._selected_model_name = get_model_name(chosen_model)\n            return get_chat_result(\n                runnable=chosen_model,\n                input_value=self.input_value,\n            )\n",
+        "fileTypes": [],
+        "file_path": "",
+        "password": false,
+        "name": "code",
+        "advanced": true,
+        "dynamic": true,
+        "info": "",
+        "load_from_db": false,
+        "title_case": false
+      },
+      "optimization": {
+        "tool_mode": false,
+        "trace_as_metadata": true,
+        "options": [
+          "quality",
+          "speed",
+          "cost",
+          "balanced"
+        ],
+        "options_metadata": [],
+        "combobox": false,
+        "dialog_inputs": {},
+        "toggle": false,
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "optimization",
+        "value": "balanced",
+        "display_name": "Optimization",
+        "advanced": false,
+        "dynamic": false,
+        "info": "Optimization preference for model selection",
+        "title_case": false,
+        "type": "str",
+        "_input_type": "DropdownInput"
+      }
+    },
+    "description": "Routes the input to the most appropriate LLM based on OpenRouter model specifications",
+    "icon": "git-branch",
+    "base_classes": [
+      "Message",
+      "Text"
+    ],
+    "display_name": "LLM Router",
+    "documentation": "",
+    "minimized": false,
+    "custom_fields": {},
+    "output_types": [],
+    "pinned": false,
+    "conditional_paths": [],
+    "frozen": false,
+    "outputs": [
+      {
+        "types": [
+          "Message"
+        ],
+        "selected": "Message",
+        "name": "output",
+        "display_name": "Output",
+        "method": "route_to_model",
+        "value": "__UNDEFINED__",
+        "cache": true,
+        "allows_loop": false,
+        "tool_mode": true
+      },
+      {
+        "types": [
+          "Text"
+        ],
+        "selected": "Text",
+        "name": "selected_model",
+        "display_name": "Selected Model",
+        "method": "get_selected_model",
+        "value": "__UNDEFINED__",
+        "cache": true,
+        "required_inputs": [
+          "output"
+        ],
+        "allows_loop": false,
+        "tool_mode": true
+      }
+    ],
+    "field_order": [
+      "models",
+      "input_value",
+      "judge_llm",
+      "optimization"
+    ],
+    "beta": false,
+    "legacy": false,
+    "edited": false,
+    "metadata": {},
+    "tool_mode": false
+  },
+  "ParseJSONData": {
+    "template": {
+      "_type": "Component",
+      "input_value": {
+        "trace_as_metadata": true,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": true,
+        "placeholder": "",
+        "show": true,
+        "name": "input_value",
+        "value": "",
+        "display_name": "Input",
+        "advanced": false,
+        "input_types": [
+          "Message",
+          "Data"
+        ],
+        "dynamic": false,
+        "info": "Data object to filter.",
+        "title_case": false,
+        "type": "other",
+        "_input_type": "HandleInput"
+      },
+      "code": {
+        "type": "code",
+        "required": true,
+        "placeholder": "",
+        "list": false,
+        "show": true,
+        "multiline": true,
+        "value": "import json\nfrom json import JSONDecodeError\n\nimport jq\nfrom json_repair import repair_json\nfrom loguru import logger\n\nfrom langflow.custom import Component\nfrom langflow.inputs import HandleInput, MessageTextInput\nfrom langflow.io import Output\nfrom langflow.schema import Data\nfrom langflow.schema.message import Message\n\n\nclass ParseJSONDataComponent(Component):\n    display_name = \"Parse JSON\"\n    description = \"Convert and extract JSON fields.\"\n    icon = \"braces\"\n    name = \"ParseJSONData\"\n    legacy: bool = True\n\n    inputs = [\n        HandleInput(\n            name=\"input_value\",\n            display_name=\"Input\",\n            info=\"Data object to filter.\",\n            required=True,\n            input_types=[\"Message\", \"Data\"],\n        ),\n        MessageTextInput(\n            name=\"query\",\n            display_name=\"JQ Query\",\n            info=\"JQ Query to filter the data. The input is always a JSON list.\",\n            required=True,\n        ),\n    ]\n\n    outputs = [\n        Output(display_name=\"Filtered Data\", name=\"filtered_data\", method=\"filter_data\"),\n    ]\n\n    def _parse_data(self, input_value) -> str:\n        if isinstance(input_value, Message) and isinstance(input_value.text, str):\n            return input_value.text\n        if isinstance(input_value, Data):\n            return json.dumps(input_value.data)\n        return str(input_value)\n\n    def filter_data(self) -> list[Data]:\n        to_filter = self.input_value\n        if not to_filter:\n            return []\n        # Check if input is a list\n        if isinstance(to_filter, list):\n            to_filter = [self._parse_data(f) for f in to_filter]\n        else:\n            to_filter = self._parse_data(to_filter)\n\n        # If input is not a list, don't wrap it in a list\n        if not isinstance(to_filter, list):\n            to_filter = repair_json(to_filter)\n            try:\n                to_filter_as_dict = json.loads(to_filter)\n            except JSONDecodeError:\n                try:\n                    to_filter_as_dict = json.loads(repair_json(to_filter))\n                except JSONDecodeError as e:\n                    msg = f\"Invalid JSON: {e}\"\n                    raise ValueError(msg) from e\n        else:\n            to_filter = [repair_json(f) for f in to_filter]\n            to_filter_as_dict = []\n            for f in to_filter:\n                try:\n                    to_filter_as_dict.append(json.loads(f))\n                except JSONDecodeError:\n                    try:\n                        to_filter_as_dict.append(json.loads(repair_json(f)))\n                    except JSONDecodeError as e:\n                        msg = f\"Invalid JSON: {e}\"\n                        raise ValueError(msg) from e\n            to_filter = to_filter_as_dict\n\n        full_filter_str = json.dumps(to_filter_as_dict)\n\n        logger.info(\"to_filter: \", to_filter)\n\n        results = jq.compile(self.query).input_text(full_filter_str).all()\n        logger.info(\"results: \", results)\n        return [Data(data=value) if isinstance(value, dict) else Data(text=str(value)) for value in results]\n",
+        "fileTypes": [],
+        "file_path": "",
+        "password": false,
+        "name": "code",
+        "advanced": true,
+        "dynamic": true,
+        "info": "",
+        "load_from_db": false,
+        "title_case": false
+      },
+      "query": {
+        "tool_mode": false,
+        "trace_as_input": true,
+        "trace_as_metadata": true,
+        "load_from_db": false,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": true,
+        "placeholder": "",
+        "show": true,
+        "name": "query",
+        "value": "",
+        "display_name": "JQ Query",
+        "advanced": false,
+        "input_types": [
+          "Message"
+        ],
+        "dynamic": false,
+        "info": "JQ Query to filter the data. The input is always a JSON list.",
+        "title_case": false,
+        "type": "str",
+        "_input_type": "MessageTextInput"
+      }
+    },
+    "description": "Convert and extract JSON fields.",
+    "icon": "braces",
+    "base_classes": [
+      "Data"
+    ],
+    "display_name": "Parse JSON",
+    "documentation": "",
+    "minimized": false,
+    "custom_fields": {},
+    "output_types": [],
+    "pinned": false,
+    "conditional_paths": [],
+    "frozen": false,
+    "outputs": [
+      {
+        "types": [
+          "Data"
+        ],
+        "selected": "Data",
+        "name": "filtered_data",
+        "display_name": "Filtered Data",
+        "method": "filter_data",
+        "value": "__UNDEFINED__",
+        "cache": true,
+        "allows_loop": false,
+        "tool_mode": true
+      }
+    ],
+    "field_order": [
+      "input_value",
+      "query"
+    ],
+    "beta": false,
+    "legacy": true,
+    "edited": false,
+    "metadata": {},
+    "tool_mode": false
+  },
+  "JSONCleaner": {
+    "template": {
+      "_type": "Component",
+      "code": {
+        "type": "code",
+        "required": true,
+        "placeholder": "",
+        "list": false,
+        "show": true,
+        "multiline": true,
+        "value": "import json\nimport unicodedata\n\nfrom langflow.custom import Component\nfrom langflow.inputs import BoolInput, MessageTextInput\nfrom langflow.schema.message import Message\nfrom langflow.template import Output\n\n\nclass JSONCleaner(Component):\n    icon = \"braces\"\n    display_name = \"JSON Cleaner\"\n    description = (\n        \"Cleans the messy and sometimes incorrect JSON strings produced by LLMs \"\n        \"so that they are fully compliant with the JSON spec.\"\n    )\n    legacy = True\n    inputs = [\n        MessageTextInput(\n            name=\"json_str\", display_name=\"JSON String\", info=\"The JSON string to be cleaned.\", required=True\n        ),\n        BoolInput(\n            name=\"remove_control_chars\",\n            display_name=\"Remove Control Characters\",\n            info=\"Remove control characters from the JSON string.\",\n            required=False,\n        ),\n        BoolInput(\n            name=\"normalize_unicode\",\n            display_name=\"Normalize Unicode\",\n            info=\"Normalize Unicode characters in the JSON string.\",\n            required=False,\n        ),\n        BoolInput(\n            name=\"validate_json\",\n            display_name=\"Validate JSON\",\n            info=\"Validate the JSON string to ensure it is well-formed.\",\n            required=False,\n        ),\n    ]\n\n    outputs = [\n        Output(display_name=\"Cleaned JSON String\", name=\"output\", method=\"clean_json\"),\n    ]\n\n    def clean_json(self) -> Message:\n        try:\n            from json_repair import repair_json\n        except ImportError as e:\n            msg = \"Could not import the json_repair package. Please install it with `pip install json_repair`.\"\n            raise ImportError(msg) from e\n\n        \"\"\"Clean the input JSON string based on provided options and return the cleaned JSON string.\"\"\"\n        json_str = self.json_str\n        remove_control_chars = self.remove_control_chars\n        normalize_unicode = self.normalize_unicode\n        validate_json = self.validate_json\n\n        start = json_str.find(\"{\")\n        end = json_str.rfind(\"}\")\n        if start == -1 or end == -1:\n            msg = \"Invalid JSON string: Missing '{' or '}'\"\n            raise ValueError(msg)\n        try:\n            json_str = json_str[start : end + 1]\n\n            if remove_control_chars:\n                json_str = self._remove_control_characters(json_str)\n            if normalize_unicode:\n                json_str = self._normalize_unicode(json_str)\n            if validate_json:\n                json_str = self._validate_json(json_str)\n\n            cleaned_json_str = repair_json(json_str)\n            result = str(cleaned_json_str)\n\n            self.status = result\n            return Message(text=result)\n        except Exception as e:\n            msg = f\"Error cleaning JSON string: {e}\"\n            raise ValueError(msg) from e\n\n    def _remove_control_characters(self, s: str) -> str:\n        \"\"\"Remove control characters from the string.\"\"\"\n        return s.translate(self.translation_table)\n\n    def _normalize_unicode(self, s: str) -> str:\n        \"\"\"Normalize Unicode characters in the string.\"\"\"\n        return unicodedata.normalize(\"NFC\", s)\n\n    def _validate_json(self, s: str) -> str:\n        \"\"\"Validate the JSON string.\"\"\"\n        try:\n            json.loads(s)\n        except json.JSONDecodeError as e:\n            msg = f\"Invalid JSON string: {e}\"\n            raise ValueError(msg) from e\n        return s\n\n    def __init__(self, *args, **kwargs):\n        # Create a translation table that maps control characters to None\n        super().__init__(*args, **kwargs)\n        self.translation_table = str.maketrans(\"\", \"\", \"\".join(chr(i) for i in range(32)) + chr(127))\n",
+        "fileTypes": [],
+        "file_path": "",
+        "password": false,
+        "name": "code",
+        "advanced": true,
+        "dynamic": true,
+        "info": "",
+        "load_from_db": false,
+        "title_case": false
+      },
+      "json_str": {
+        "tool_mode": false,
+        "trace_as_input": true,
+        "trace_as_metadata": true,
+        "load_from_db": false,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": true,
+        "placeholder": "",
+        "show": true,
+        "name": "json_str",
+        "value": "",
+        "display_name": "JSON String",
+        "advanced": false,
+        "input_types": [
+          "Message"
+        ],
+        "dynamic": false,
+        "info": "The JSON string to be cleaned.",
+        "title_case": false,
+        "type": "str",
+        "_input_type": "MessageTextInput"
+      },
+      "normalize_unicode": {
+        "tool_mode": false,
+        "trace_as_metadata": true,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "normalize_unicode",
+        "value": false,
+        "display_name": "Normalize Unicode",
+        "advanced": false,
+        "dynamic": false,
+        "info": "Normalize Unicode characters in the JSON string.",
+        "title_case": false,
+        "type": "bool",
+        "_input_type": "BoolInput"
+      },
+      "remove_control_chars": {
+        "tool_mode": false,
+        "trace_as_metadata": true,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "remove_control_chars",
+        "value": false,
+        "display_name": "Remove Control Characters",
+        "advanced": false,
+        "dynamic": false,
+        "info": "Remove control characters from the JSON string.",
+        "title_case": false,
+        "type": "bool",
+        "_input_type": "BoolInput"
+      },
+      "validate_json": {
+        "tool_mode": false,
+        "trace_as_metadata": true,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "validate_json",
+        "value": false,
+        "display_name": "Validate JSON",
+        "advanced": false,
+        "dynamic": false,
+        "info": "Validate the JSON string to ensure it is well-formed.",
+        "title_case": false,
+        "type": "bool",
+        "_input_type": "BoolInput"
+      }
+    },
+    "description": "Cleans the messy and sometimes incorrect JSON strings produced by LLMs so that they are fully compliant with the JSON spec.",
+    "icon": "braces",
+    "base_classes": [
+      "Message"
+    ],
+    "display_name": "JSON Cleaner",
+    "documentation": "",
+    "minimized": false,
+    "custom_fields": {},
+    "output_types": [],
+    "pinned": false,
+    "conditional_paths": [],
+    "frozen": false,
+    "outputs": [
+      {
+        "types": [
+          "Message"
+        ],
+        "selected": "Message",
+        "name": "output",
+        "display_name": "Cleaned JSON String",
+        "method": "clean_json",
+        "value": "__UNDEFINED__",
+        "cache": true,
+        "allows_loop": false,
+        "tool_mode": true
+      }
+    ],
+    "field_order": [
+      "json_str",
+      "remove_control_chars",
+      "normalize_unicode",
+      "validate_json"
+    ],
+    "beta": false,
+    "legacy": true,
+    "edited": false,
+    "metadata": {},
+    "tool_mode": false
+  },
+  "SplitText": {
+    "template": {
+      "_type": "Component",
+      "data_inputs": {
+        "trace_as_metadata": true,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": true,
+        "placeholder": "",
+        "show": true,
+        "name": "data_inputs",
+        "value": "",
+        "display_name": "Data or DataFrame",
+        "advanced": false,
+        "input_types": [
+          "Data",
+          "DataFrame"
+        ],
+        "dynamic": false,
+        "info": "The data with texts to split in chunks.",
+        "title_case": false,
+        "type": "other",
+        "_input_type": "HandleInput"
+      },
+      "chunk_overlap": {
+        "tool_mode": false,
+        "trace_as_metadata": true,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "chunk_overlap",
+        "value": 200,
+        "display_name": "Chunk Overlap",
+        "advanced": false,
+        "dynamic": false,
+        "info": "Number of characters to overlap between chunks.",
+        "title_case": false,
+        "type": "int",
+        "_input_type": "IntInput"
+      },
+      "chunk_size": {
+        "tool_mode": false,
+        "trace_as_metadata": true,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "chunk_size",
+        "value": 1000,
+        "display_name": "Chunk Size",
+        "advanced": false,
+        "dynamic": false,
+        "info": "The maximum length of each chunk. Text is first split by separator, then chunks are merged up to this size. Individual splits larger than this won't be further divided.",
+        "title_case": false,
+        "type": "int",
+        "_input_type": "IntInput"
+      },
+      "code": {
+        "type": "code",
+        "required": true,
+        "placeholder": "",
+        "list": false,
+        "show": true,
+        "multiline": true,
+        "value": "from langchain_text_splitters import CharacterTextSplitter\n\nfrom langflow.custom import Component\nfrom langflow.io import DropdownInput, HandleInput, IntInput, MessageTextInput, Output\nfrom langflow.schema import Data, DataFrame\nfrom langflow.utils.util import unescape_string\n\n\nclass SplitTextComponent(Component):\n    display_name: str = \"Split Text\"\n    description: str = \"Split text into chunks based on specified criteria.\"\n    icon = \"scissors-line-dashed\"\n    name = \"SplitText\"\n\n    inputs = [\n        HandleInput(\n            name=\"data_inputs\",\n            display_name=\"Data or DataFrame\",\n            info=\"The data with texts to split in chunks.\",\n            input_types=[\"Data\", \"DataFrame\"],\n            required=True,\n        ),\n        IntInput(\n            name=\"chunk_overlap\",\n            display_name=\"Chunk Overlap\",\n            info=\"Number of characters to overlap between chunks.\",\n            value=200,\n        ),\n        IntInput(\n            name=\"chunk_size\",\n            display_name=\"Chunk Size\",\n            info=(\n                \"The maximum length of each chunk. Text is first split by separator, \"\n                \"then chunks are merged up to this size. \"\n                \"Individual splits larger than this won't be further divided.\"\n            ),\n            value=1000,\n        ),\n        MessageTextInput(\n            name=\"separator\",\n            display_name=\"Separator\",\n            info=(\n                \"The character to split on. Use \\\\n for newline. \"\n                \"Examples: \\\\n\\\\n for paragraphs, \\\\n for lines, . for sentences\"\n            ),\n            value=\"\\n\",\n        ),\n        MessageTextInput(\n            name=\"text_key\",\n            display_name=\"Text Key\",\n            info=\"The key to use for the text column.\",\n            value=\"text\",\n            advanced=True,\n        ),\n        DropdownInput(\n            name=\"keep_separator\",\n            display_name=\"Keep Separator\",\n            info=\"Whether to keep the separator in the output chunks and where to place it.\",\n            options=[\"False\", \"True\", \"Start\", \"End\"],\n            value=\"False\",\n            advanced=True,\n        ),\n    ]\n\n    outputs = [\n        Output(display_name=\"Chunks\", name=\"chunks\", method=\"split_text\"),\n        Output(display_name=\"DataFrame\", name=\"dataframe\", method=\"as_dataframe\"),\n    ]\n\n    def _docs_to_data(self, docs) -> list[Data]:\n        return [Data(text=doc.page_content, data=doc.metadata) for doc in docs]\n\n    def _fix_separator(self, separator: str) -> str:\n        \"\"\"Fix common separator issues and convert to proper format.\"\"\"\n        if separator == \"/n\":\n            return \"\\n\"\n        if separator == \"/t\":\n            return \"\\t\"\n        return separator\n\n    def split_text_base(self):\n        separator = self._fix_separator(self.separator)\n        separator = unescape_string(separator)\n\n        if isinstance(self.data_inputs, DataFrame):\n            if not len(self.data_inputs):\n                msg = \"DataFrame is empty\"\n                raise TypeError(msg)\n\n            self.data_inputs.text_key = self.text_key\n            try:\n                documents = self.data_inputs.to_lc_documents()\n            except Exception as e:\n                msg = f\"Error converting DataFrame to documents: {e}\"\n                raise TypeError(msg) from e\n        else:\n            if not self.data_inputs:\n                msg = \"No data inputs provided\"\n                raise TypeError(msg)\n\n            documents = []\n            if isinstance(self.data_inputs, Data):\n                self.data_inputs.text_key = self.text_key\n                documents = [self.data_inputs.to_lc_document()]\n            else:\n                try:\n                    documents = [input_.to_lc_document() for input_ in self.data_inputs if isinstance(input_, Data)]\n                    if not documents:\n                        msg = f\"No valid Data inputs found in {type(self.data_inputs)}\"\n                        raise TypeError(msg)\n                except AttributeError as e:\n                    msg = f\"Invalid input type in collection: {e}\"\n                    raise TypeError(msg) from e\n        try:\n            # Convert string 'False'/'True' to boolean\n            keep_sep = self.keep_separator\n            if isinstance(keep_sep, str):\n                if keep_sep.lower() == \"false\":\n                    keep_sep = False\n                elif keep_sep.lower() == \"true\":\n                    keep_sep = True\n                # 'start' and 'end' are kept as strings\n\n            splitter = CharacterTextSplitter(\n                chunk_overlap=self.chunk_overlap,\n                chunk_size=self.chunk_size,\n                separator=separator,\n                keep_separator=keep_sep,\n            )\n            return splitter.split_documents(documents)\n        except Exception as e:\n            msg = f\"Error splitting text: {e}\"\n            raise TypeError(msg) from e\n\n    def split_text(self) -> list[Data]:\n        return self._docs_to_data(self.split_text_base())\n\n    def as_dataframe(self) -> DataFrame:\n        return DataFrame(self.split_text())\n",
+        "fileTypes": [],
+        "file_path": "",
+        "password": false,
+        "name": "code",
+        "advanced": true,
+        "dynamic": true,
+        "info": "",
+        "load_from_db": false,
+        "title_case": false
+      },
+      "keep_separator": {
+        "tool_mode": false,
+        "trace_as_metadata": true,
+        "options": [
+          "False",
+          "True",
+          "Start",
+          "End"
+        ],
+        "options_metadata": [],
+        "combobox": false,
+        "dialog_inputs": {},
+        "toggle": false,
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "keep_separator",
+        "value": "False",
+        "display_name": "Keep Separator",
+        "advanced": true,
+        "dynamic": false,
+        "info": "Whether to keep the separator in the output chunks and where to place it.",
+        "title_case": false,
+        "type": "str",
+        "_input_type": "DropdownInput"
+      },
+      "separator": {
+        "tool_mode": false,
+        "trace_as_input": true,
+        "trace_as_metadata": true,
+        "load_from_db": false,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "separator",
+        "value": "\n",
+        "display_name": "Separator",
+        "advanced": false,
+        "input_types": [
+          "Message"
+        ],
+        "dynamic": false,
+        "info": "The character to split on. Use \\n for newline. Examples: \\n\\n for paragraphs, \\n for lines, . for sentences",
+        "title_case": false,
+        "type": "str",
+        "_input_type": "MessageTextInput"
+      },
+      "text_key": {
+        "tool_mode": false,
+        "trace_as_input": true,
+        "trace_as_metadata": true,
+        "load_from_db": false,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "text_key",
+        "value": "text",
+        "display_name": "Text Key",
+        "advanced": true,
+        "input_types": [
+          "Message"
+        ],
+        "dynamic": false,
+        "info": "The key to use for the text column.",
+        "title_case": false,
+        "type": "str",
+        "_input_type": "MessageTextInput"
+      }
+    },
+    "description": "Split text into chunks based on specified criteria.",
+    "icon": "scissors-line-dashed",
+    "base_classes": [
+      "Data",
+      "DataFrame"
+    ],
+    "display_name": "Split Text",
+    "documentation": "",
+    "minimized": false,
+    "custom_fields": {},
+    "output_types": [],
+    "pinned": false,
+    "conditional_paths": [],
+    "frozen": false,
+    "outputs": [
+      {
+        "types": [
+          "Data"
+        ],
+        "selected": "Data",
+        "name": "chunks",
+        "display_name": "Chunks",
+        "method": "split_text",
+        "value": "__UNDEFINED__",
+        "cache": true,
+        "allows_loop": false,
+        "tool_mode": true
+      },
+      {
+        "types": [
+          "DataFrame"
+        ],
+        "selected": "DataFrame",
+        "name": "dataframe",
+        "display_name": "DataFrame",
+        "method": "as_dataframe",
+        "value": "__UNDEFINED__",
+        "cache": true,
+        "allows_loop": false,
+        "tool_mode": true
+      }
+    ],
+    "field_order": [
+      "data_inputs",
+      "chunk_overlap",
+      "chunk_size",
+      "separator",
+      "text_key",
+      "keep_separator"
+    ],
+    "beta": false,
+    "legacy": false,
+    "edited": false,
+    "metadata": {},
+    "tool_mode": false
+  },
+  "ParserComponent": {
+    "template": {
+      "_type": "Component",
+      "input_data": {
+        "trace_as_metadata": true,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": true,
+        "placeholder": "",
+        "show": true,
+        "name": "input_data",
+        "value": "",
+        "display_name": "Data or DataFrame",
+        "advanced": false,
+        "input_types": [
+          "DataFrame",
+          "Data"
+        ],
+        "dynamic": false,
+        "info": "Accepts either a DataFrame or a Data object.",
+        "title_case": false,
+        "type": "other",
+        "_input_type": "HandleInput"
+      },
+      "code": {
+        "type": "code",
+        "required": true,
+        "placeholder": "",
+        "list": false,
+        "show": true,
+        "multiline": true,
+        "value": "import json\nfrom typing import Any\n\nfrom langflow.custom import Component\nfrom langflow.io import (\n    BoolInput,\n    HandleInput,\n    MessageTextInput,\n    MultilineInput,\n    Output,\n    TabInput,\n)\nfrom langflow.schema import Data, DataFrame\nfrom langflow.schema.message import Message\n\n\nclass ParserComponent(Component):\n    display_name = \"Parser\"\n    description = (\n        \"Format a DataFrame or Data object into text using a template. \"\n        \"Enable 'Stringify' to convert input into a readable string instead.\"\n    )\n    icon = \"braces\"\n\n    inputs = [\n        TabInput(\n            name=\"mode\",\n            display_name=\"Mode\",\n            options=[\"Parser\", \"Stringify\"],\n            value=\"Parser\",\n            info=\"Convert into raw string instead of using a template.\",\n            real_time_refresh=True,\n        ),\n        MultilineInput(\n            name=\"pattern\",\n            display_name=\"Template\",\n            info=(\n                \"Use variables within curly brackets to extract column values for DataFrames \"\n                \"or key values for Data.\"\n                \"For example: `Name: {Name}, Age: {Age}, Country: {Country}`\"\n            ),\n            value=\"Text: {text}\",  # Example default\n            dynamic=True,\n            show=True,\n            required=True,\n        ),\n        HandleInput(\n            name=\"input_data\",\n            display_name=\"Data or DataFrame\",\n            input_types=[\"DataFrame\", \"Data\"],\n            info=\"Accepts either a DataFrame or a Data object.\",\n            required=True,\n        ),\n        MessageTextInput(\n            name=\"sep\",\n            display_name=\"Separator\",\n            advanced=True,\n            value=\"\\n\",\n            info=\"String used to separate rows/items.\",\n        ),\n    ]\n\n    outputs = [\n        Output(\n            display_name=\"Parsed Text\",\n            name=\"parsed_text\",\n            info=\"Formatted text output.\",\n            method=\"parse_combined_text\",\n        ),\n    ]\n\n    def update_build_config(self, build_config, field_value, field_name=None):\n        \"\"\"Dynamically hide/show `template` and enforce requirement based on `stringify`.\"\"\"\n        if field_name == \"mode\":\n            build_config[\"pattern\"][\"show\"] = self.mode == \"Parser\"\n            build_config[\"pattern\"][\"required\"] = self.mode == \"Parser\"\n            if field_value:\n                clean_data = BoolInput(\n                    name=\"clean_data\",\n                    display_name=\"Clean Data\",\n                    info=(\n                        \"Enable to clean the data by removing empty rows and lines \"\n                        \"in each cell of the DataFrame/ Data object.\"\n                    ),\n                    value=True,\n                    advanced=True,\n                    required=False,\n                )\n                build_config[\"clean_data\"] = clean_data.to_dict()\n            else:\n                build_config.pop(\"clean_data\", None)\n\n        return build_config\n\n    def _clean_args(self):\n        \"\"\"Prepare arguments based on input type.\"\"\"\n        input_data = self.input_data\n\n        match input_data:\n            case list() if all(isinstance(item, Data) for item in input_data):\n                msg = \"List of Data objects is not supported.\"\n                raise ValueError(msg)\n            case DataFrame():\n                return input_data, None\n            case Data():\n                return None, input_data\n            case dict() if \"data\" in input_data:\n                try:\n                    if \"columns\" in input_data:  # Likely a DataFrame\n                        return DataFrame.from_dict(input_data), None\n                    # Likely a Data object\n                    return None, Data(**input_data)\n                except (TypeError, ValueError, KeyError) as e:\n                    msg = f\"Invalid structured input provided: {e!s}\"\n                    raise ValueError(msg) from e\n            case _:\n                msg = f\"Unsupported input type: {type(input_data)}. Expected DataFrame or Data.\"\n                raise ValueError(msg)\n\n    def parse_combined_text(self) -> Message:\n        \"\"\"Parse all rows/items into a single text or convert input to string if `stringify` is enabled.\"\"\"\n        # Early return for stringify option\n        if self.mode == \"Stringify\":\n            return self.convert_to_string()\n\n        df, data = self._clean_args()\n\n        lines = []\n        if df is not None:\n            for _, row in df.iterrows():\n                formatted_text = self.pattern.format(**row.to_dict())\n                lines.append(formatted_text)\n        elif data is not None:\n            formatted_text = self.pattern.format(**data.data)\n            lines.append(formatted_text)\n\n        combined_text = self.sep.join(lines)\n        self.status = combined_text\n        return Message(text=combined_text)\n\n    def _safe_convert(self, data: Any) -> str:\n        \"\"\"Safely convert input data to string.\"\"\"\n        try:\n            if isinstance(data, str):\n                return data\n            if isinstance(data, Message):\n                return data.get_text()\n            if isinstance(data, Data):\n                return json.dumps(data.data)\n            if isinstance(data, DataFrame):\n                if hasattr(self, \"clean_data\") and self.clean_data:\n                    # Remove empty rows\n                    data = data.dropna(how=\"all\")\n                    # Remove empty lines in each cell\n                    data = data.replace(r\"^\\s*$\", \"\", regex=True)\n                    # Replace multiple newlines with a single newline\n                    data = data.replace(r\"\\n+\", \"\\n\", regex=True)\n                return data.to_markdown(index=False)\n            return str(data)\n        except (ValueError, TypeError, AttributeError) as e:\n            msg = f\"Error converting data: {e!s}\"\n            raise ValueError(msg) from e\n\n    def convert_to_string(self) -> Message:\n        \"\"\"Convert input data to string with proper error handling.\"\"\"\n        result = \"\"\n        if isinstance(self.input_data, list):\n            result = \"\\n\".join([self._safe_convert(item) for item in self.input_data])\n        else:\n            result = self._safe_convert(self.input_data)\n        self.log(f\"Converted to string with length: {len(result)}\")\n\n        message = Message(text=result)\n        self.status = message\n        return message\n",
+        "fileTypes": [],
+        "file_path": "",
+        "password": false,
+        "name": "code",
+        "advanced": true,
+        "dynamic": true,
+        "info": "",
+        "load_from_db": false,
+        "title_case": false
+      },
+      "mode": {
+        "tool_mode": false,
+        "trace_as_metadata": true,
+        "options": [
+          "Parser",
+          "Stringify"
+        ],
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "mode",
+        "value": "Parser",
+        "display_name": "Mode",
+        "advanced": false,
+        "dynamic": false,
+        "info": "Convert into raw string instead of using a template.",
+        "real_time_refresh": true,
+        "title_case": false,
+        "type": "tab",
+        "_input_type": "TabInput"
+      },
+      "pattern": {
+        "tool_mode": false,
+        "trace_as_input": true,
+        "multiline": true,
+        "trace_as_metadata": true,
+        "load_from_db": false,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": true,
+        "placeholder": "",
+        "show": true,
+        "name": "pattern",
+        "value": "Text: {text}",
+        "display_name": "Template",
+        "advanced": false,
+        "input_types": [
+          "Message"
+        ],
+        "dynamic": true,
+        "info": "Use variables within curly brackets to extract column values for DataFrames or key values for Data.For example: `Name: {Name}, Age: {Age}, Country: {Country}`",
+        "title_case": false,
+        "copy_field": false,
+        "type": "str",
+        "_input_type": "MultilineInput"
+      },
+      "sep": {
+        "tool_mode": false,
+        "trace_as_input": true,
+        "trace_as_metadata": true,
+        "load_from_db": false,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "sep",
+        "value": "\n",
+        "display_name": "Separator",
+        "advanced": true,
+        "input_types": [
+          "Message"
+        ],
+        "dynamic": false,
+        "info": "String used to separate rows/items.",
+        "title_case": false,
+        "type": "str",
+        "_input_type": "MessageTextInput"
+      }
+    },
+    "description": "Format a DataFrame or Data object into text using a template. Enable 'Stringify' to convert input into a readable string instead.",
+    "icon": "braces",
+    "base_classes": [
+      "Message"
+    ],
+    "display_name": "Parser",
+    "documentation": "",
+    "minimized": false,
+    "custom_fields": {},
+    "output_types": [],
+    "pinned": false,
+    "conditional_paths": [],
+    "frozen": false,
+    "outputs": [
+      {
+        "types": [
+          "Message"
+        ],
+        "selected": "Message",
+        "name": "parsed_text",
+        "display_name": "Parsed Text",
+        "method": "parse_combined_text",
+        "value": "__UNDEFINED__",
+        "cache": true,
+        "allows_loop": false,
+        "tool_mode": true
+      }
+    ],
+    "field_order": [
+      "mode",
+      "pattern",
+      "input_data",
+      "sep"
+    ],
+    "beta": false,
+    "legacy": false,
+    "edited": false,
+    "metadata": {},
+    "tool_mode": false
+  },
+  "MergeDataComponent": {
+    "template": {
+      "_type": "Component",
+      "data_inputs": {
+        "tool_mode": false,
+        "trace_as_metadata": true,
+        "list": true,
+        "list_add_label": "Add More",
+        "trace_as_input": true,
+        "required": true,
+        "placeholder": "",
+        "show": true,
+        "name": "data_inputs",
+        "value": "",
+        "display_name": "Data Inputs",
+        "advanced": false,
+        "input_types": [
+          "Data"
+        ],
+        "dynamic": false,
+        "info": "Data to combine",
+        "title_case": false,
+        "type": "other",
+        "_input_type": "DataInput"
+      },
+      "code": {
+        "type": "code",
+        "required": true,
+        "placeholder": "",
+        "list": false,
+        "show": true,
+        "multiline": true,
+        "value": "from enum import Enum\nfrom typing import cast\n\nfrom loguru import logger\n\nfrom langflow.custom import Component\nfrom langflow.io import DataInput, DropdownInput, Output\nfrom langflow.schema import DataFrame\n\n\nclass DataOperation(str, Enum):\n    CONCATENATE = \"Concatenate\"\n    APPEND = \"Append\"\n    MERGE = \"Merge\"\n    JOIN = \"Join\"\n\n\nclass MergeDataComponent(Component):\n    display_name = \"Combine Data\"\n    description = \"Combines data using different operations\"\n    icon = \"merge\"\n    MIN_INPUTS_REQUIRED = 2\n\n    inputs = [\n        DataInput(name=\"data_inputs\", display_name=\"Data Inputs\", info=\"Data to combine\", is_list=True, required=True),\n        DropdownInput(\n            name=\"operation\",\n            display_name=\"Operation Type\",\n            options=[op.value for op in DataOperation],\n            value=DataOperation.CONCATENATE.value,\n        ),\n    ]\n    outputs = [Output(display_name=\"DataFrame\", name=\"combined_data\", method=\"combine_data\")]\n\n    def combine_data(self) -> DataFrame:\n        if not self.data_inputs or len(self.data_inputs) < self.MIN_INPUTS_REQUIRED:\n            empty_dataframe = DataFrame()\n            self.status = empty_dataframe\n            return empty_dataframe\n\n        operation = DataOperation(self.operation)\n        try:\n            combined_dataframe = self._process_operation(operation)\n            self.status = combined_dataframe\n        except Exception as e:\n            logger.error(f\"Error during operation {operation}: {e!s}\")\n            raise\n        else:\n            return combined_dataframe\n\n    def _process_operation(self, operation: DataOperation) -> DataFrame:\n        if operation == DataOperation.CONCATENATE:\n            combined_data: dict[str, str | object] = {}\n            for data_input in self.data_inputs:\n                for key, value in data_input.data.items():\n                    if key in combined_data:\n                        if isinstance(combined_data[key], str) and isinstance(value, str):\n                            combined_data[key] = f\"{combined_data[key]}\\n{value}\"\n                        else:\n                            combined_data[key] = value\n                    else:\n                        combined_data[key] = value\n            return DataFrame([combined_data])\n\n        if operation == DataOperation.APPEND:\n            rows = [data_input.data for data_input in self.data_inputs]\n            return DataFrame(rows)\n\n        if operation == DataOperation.MERGE:\n            result_data: dict[str, str | list[str] | object] = {}\n            for data_input in self.data_inputs:\n                for key, value in data_input.data.items():\n                    if key in result_data and isinstance(value, str):\n                        if isinstance(result_data[key], list):\n                            cast(\"list[str]\", result_data[key]).append(value)\n                        else:\n                            result_data[key] = [result_data[key], value]\n                    else:\n                        result_data[key] = value\n            return DataFrame([result_data])\n\n        if operation == DataOperation.JOIN:\n            combined_data = {}\n            for idx, data_input in enumerate(self.data_inputs, 1):\n                for key, value in data_input.data.items():\n                    new_key = f\"{key}_doc{idx}\" if idx > 1 else key\n                    combined_data[new_key] = value\n            return DataFrame([combined_data])\n\n        return DataFrame()\n",
+        "fileTypes": [],
+        "file_path": "",
+        "password": false,
+        "name": "code",
+        "advanced": true,
+        "dynamic": true,
+        "info": "",
+        "load_from_db": false,
+        "title_case": false
+      },
+      "operation": {
+        "tool_mode": false,
+        "trace_as_metadata": true,
+        "options": [
+          "Concatenate",
+          "Append",
+          "Merge",
+          "Join"
+        ],
+        "options_metadata": [],
+        "combobox": false,
+        "dialog_inputs": {},
+        "toggle": false,
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "operation",
+        "value": "Concatenate",
+        "display_name": "Operation Type",
+        "advanced": false,
+        "dynamic": false,
+        "info": "",
+        "title_case": false,
+        "type": "str",
+        "_input_type": "DropdownInput"
+      }
+    },
+    "description": "Combines data using different operations",
+    "icon": "merge",
+    "base_classes": [
+      "DataFrame"
+    ],
+    "display_name": "Combine Data",
+    "documentation": "",
+    "minimized": false,
+    "custom_fields": {},
+    "output_types": [],
+    "pinned": false,
+    "conditional_paths": [],
+    "frozen": false,
+    "outputs": [
+      {
+        "types": [
+          "DataFrame"
+        ],
+        "selected": "DataFrame",
+        "name": "combined_data",
+        "display_name": "DataFrame",
+        "method": "combine_data",
+        "value": "__UNDEFINED__",
+        "cache": true,
+        "allows_loop": false,
+        "tool_mode": true
+      }
+    ],
+    "field_order": [
+      "data_inputs",
+      "operation"
+    ],
+    "beta": false,
+    "legacy": false,
+    "edited": false,
+    "metadata": {},
+    "tool_mode": false
+  },
+  "ExtractaKey": {
+    "template": {
+      "_type": "Component",
+      "data_input": {
+        "tool_mode": false,
+        "trace_as_metadata": true,
+        "list": false,
+        "list_add_label": "Add More",
+        "trace_as_input": true,
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "data_input",
+        "value": "",
+        "display_name": "Data Input",
+        "advanced": false,
+        "input_types": [
+          "Data"
+        ],
+        "dynamic": false,
+        "info": "The Data object or list of Data objects to extract the key from.",
+        "title_case": false,
+        "type": "other",
+        "_input_type": "DataInput"
+      },
+      "code": {
+        "type": "code",
+        "required": true,
+        "placeholder": "",
+        "list": false,
+        "show": true,
+        "multiline": true,
+        "value": "from langflow.custom import Component\nfrom langflow.io import DataInput, Output, StrInput\nfrom langflow.schema import Data\n\n\nclass ExtractDataKeyComponent(Component):\n    display_name = \"Extract Key\"\n    description = (\n        \"Extract a specific key from a Data object or a list of \"\n        \"Data objects and return the extracted value(s) as Data object(s).\"\n    )\n    icon = \"key\"\n    name = \"ExtractaKey\"\n    legacy = True\n\n    inputs = [\n        DataInput(\n            name=\"data_input\",\n            display_name=\"Data Input\",\n            info=\"The Data object or list of Data objects to extract the key from.\",\n        ),\n        StrInput(\n            name=\"key\",\n            display_name=\"Key to Extract\",\n            info=\"The key in the Data object(s) to extract.\",\n        ),\n    ]\n\n    outputs = [\n        Output(display_name=\"Extracted Data\", name=\"extracted_data\", method=\"extract_key\"),\n    ]\n\n    def extract_key(self) -> Data | list[Data]:\n        key = self.key\n\n        if isinstance(self.data_input, list):\n            result = []\n            for item in self.data_input:\n                if isinstance(item, Data) and key in item.data:\n                    extracted_value = item.data[key]\n                    result.append(Data(data={key: extracted_value}))\n            self.status = result\n            return result\n        if isinstance(self.data_input, Data):\n            if key in self.data_input.data:\n                extracted_value = self.data_input.data[key]\n                result = Data(data={key: extracted_value})\n                self.status = result\n                return result\n            self.status = f\"Key '{key}' not found in Data object.\"\n            return Data(data={\"error\": f\"Key '{key}' not found in Data object.\"})\n        self.status = \"Invalid input. Expected Data object or list of Data objects.\"\n        return Data(data={\"error\": \"Invalid input. Expected Data object or list of Data objects.\"})\n",
+        "fileTypes": [],
+        "file_path": "",
+        "password": false,
+        "name": "code",
+        "advanced": true,
+        "dynamic": true,
+        "info": "",
+        "load_from_db": false,
+        "title_case": false
+      },
+      "key": {
+        "tool_mode": false,
+        "trace_as_metadata": true,
+        "load_from_db": false,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "key",
+        "value": "",
+        "display_name": "Key to Extract",
+        "advanced": false,
+        "dynamic": false,
+        "info": "The key in the Data object(s) to extract.",
+        "title_case": false,
+        "type": "str",
+        "_input_type": "StrInput"
+      }
+    },
+    "description": "Extract a specific key from a Data object or a list of Data objects and return the extracted value(s) as Data object(s).",
+    "icon": "key",
+    "base_classes": [
+      "Data"
+    ],
+    "display_name": "Extract Key",
+    "documentation": "",
+    "minimized": false,
+    "custom_fields": {},
+    "output_types": [],
+    "pinned": false,
+    "conditional_paths": [],
+    "frozen": false,
+    "outputs": [
+      {
+        "types": [
+          "Data"
+        ],
+        "selected": "Data",
+        "name": "extracted_data",
+        "display_name": "Extracted Data",
+        "method": "extract_key",
+        "value": "__UNDEFINED__",
+        "cache": true,
+        "allows_loop": false,
+        "tool_mode": true
+      }
+    ],
+    "field_order": [
+      "data_input",
+      "key"
+    ],
+    "beta": false,
+    "legacy": true,
+    "edited": false,
+    "metadata": {},
+    "tool_mode": false
+  },
+  "FilterData": {
+    "template": {
+      "_type": "Component",
+      "data": {
+        "tool_mode": false,
+        "trace_as_metadata": true,
+        "list": false,
+        "list_add_label": "Add More",
+        "trace_as_input": true,
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "data",
+        "value": "",
+        "display_name": "Data",
+        "advanced": false,
+        "input_types": [
+          "Data"
+        ],
+        "dynamic": false,
+        "info": "Data object to filter.",
+        "title_case": false,
+        "type": "other",
+        "_input_type": "DataInput"
+      },
+      "code": {
+        "type": "code",
+        "required": true,
+        "placeholder": "",
+        "list": false,
+        "show": true,
+        "multiline": true,
+        "value": "from langflow.custom import Component\nfrom langflow.io import DataInput, MessageTextInput, Output\nfrom langflow.schema import Data\n\n\nclass FilterDataComponent(Component):\n    display_name = \"Filter Data\"\n    description = \"Filters a Data object based on a list of keys.\"\n    icon = \"filter\"\n    beta = True\n    name = \"FilterData\"\n\n    inputs = [\n        DataInput(\n            name=\"data\",\n            display_name=\"Data\",\n            info=\"Data object to filter.\",\n        ),\n        MessageTextInput(\n            name=\"filter_criteria\",\n            display_name=\"Filter Criteria\",\n            info=\"List of keys to filter by.\",\n            is_list=True,\n        ),\n    ]\n\n    outputs = [\n        Output(display_name=\"Filtered Data\", name=\"filtered_data\", method=\"filter_data\"),\n    ]\n\n    def filter_data(self) -> Data:\n        filter_criteria: list[str] = self.filter_criteria\n        data = self.data.data if isinstance(self.data, Data) else {}\n\n        # Filter the data\n        filtered = {key: value for key, value in data.items() if key in filter_criteria}\n\n        # Create a new Data object with the filtered data\n        filtered_data = Data(data=filtered)\n        self.status = filtered_data\n        return filtered_data\n",
+        "fileTypes": [],
+        "file_path": "",
+        "password": false,
+        "name": "code",
+        "advanced": true,
+        "dynamic": true,
+        "info": "",
+        "load_from_db": false,
+        "title_case": false
+      },
+      "filter_criteria": {
+        "tool_mode": false,
+        "trace_as_input": true,
+        "trace_as_metadata": true,
+        "load_from_db": false,
+        "list": true,
+        "list_add_label": "Add More",
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "filter_criteria",
+        "value": "",
+        "display_name": "Filter Criteria",
+        "advanced": false,
+        "input_types": [
+          "Message"
+        ],
+        "dynamic": false,
+        "info": "List of keys to filter by.",
+        "title_case": false,
+        "type": "str",
+        "_input_type": "MessageTextInput"
+      }
+    },
+    "description": "Filters a Data object based on a list of keys.",
+    "icon": "filter",
+    "base_classes": [
+      "Data"
+    ],
+    "display_name": "Filter Data",
+    "documentation": "",
+    "minimized": false,
+    "custom_fields": {},
+    "output_types": [],
+    "pinned": false,
+    "conditional_paths": [],
+    "frozen": false,
+    "outputs": [
+      {
+        "types": [
+          "Data"
+        ],
+        "selected": "Data",
+        "name": "filtered_data",
+        "display_name": "Filtered Data",
+        "method": "filter_data",
+        "value": "__UNDEFINED__",
+        "cache": true,
+        "allows_loop": false,
+        "tool_mode": true
+      }
+    ],
+    "field_order": [
+      "data",
+      "filter_criteria"
+    ],
+    "beta": true,
+    "legacy": false,
+    "edited": false,
+    "metadata": {},
+    "tool_mode": false
+  },
+  "SelectData": {
+    "template": {
+      "_type": "Component",
+      "data_list": {
+        "tool_mode": false,
+        "trace_as_metadata": true,
+        "list": true,
+        "list_add_label": "Add More",
+        "trace_as_input": true,
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "data_list",
+        "value": "",
+        "display_name": "Data List",
+        "advanced": false,
+        "input_types": [
+          "Data"
+        ],
+        "dynamic": false,
+        "info": "List of data to select from.",
+        "title_case": false,
+        "type": "other",
+        "_input_type": "DataInput"
+      },
+      "code": {
+        "type": "code",
+        "required": true,
+        "placeholder": "",
+        "list": false,
+        "show": true,
+        "multiline": true,
+        "value": "from langflow.custom import Component\nfrom langflow.field_typing.range_spec import RangeSpec\nfrom langflow.inputs.inputs import DataInput, IntInput\nfrom langflow.io import Output\nfrom langflow.schema import Data\n\n\nclass SelectDataComponent(Component):\n    display_name: str = \"Select Data\"\n    description: str = \"Select a single data from a list of data.\"\n    name: str = \"SelectData\"\n    icon = \"prototypes\"\n    legacy = True\n\n    inputs = [\n        DataInput(\n            name=\"data_list\",\n            display_name=\"Data List\",\n            info=\"List of data to select from.\",\n            is_list=True,  # Specify that this input takes a list of Data objects\n        ),\n        IntInput(\n            name=\"data_index\",\n            display_name=\"Data Index\",\n            info=\"Index of the data to select.\",\n            value=0,  # Will be populated dynamically based on the length of data_list\n            range_spec=RangeSpec(min=0, max=15, step=1, step_type=\"int\"),\n        ),\n    ]\n\n    outputs = [\n        Output(display_name=\"Selected Data\", name=\"selected_data\", method=\"select_data\"),\n    ]\n\n    async def select_data(self) -> Data:\n        # Retrieve the selected index from the dropdown\n        selected_index = int(self.data_index)\n        # Get the data list\n\n        # Validate that the selected index is within bounds\n        if selected_index < 0 or selected_index >= len(self.data_list):\n            msg = f\"Selected index {selected_index} is out of range.\"\n            raise ValueError(msg)\n\n        # Return the selected Data object\n        selected_data = self.data_list[selected_index]\n        self.status = selected_data  # Update the component status to reflect the selected data\n        return selected_data\n",
+        "fileTypes": [],
+        "file_path": "",
+        "password": false,
+        "name": "code",
+        "advanced": true,
+        "dynamic": true,
+        "info": "",
+        "load_from_db": false,
+        "title_case": false
+      },
+      "data_index": {
+        "tool_mode": false,
+        "trace_as_metadata": true,
+        "range_spec": {
+          "step_type": "int",
+          "min": 0,
+          "max": 15,
+          "step": 1
+        },
+        "list": false,
+        "list_add_label": "Add More",
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "data_index",
+        "value": 0,
+        "display_name": "Data Index",
+        "advanced": false,
+        "dynamic": false,
+        "info": "Index of the data to select.",
+        "title_case": false,
+        "type": "int",
+        "_input_type": "IntInput"
+      }
+    },
+    "description": "Select a single data from a list of data.",
+    "icon": "prototypes",
+    "base_classes": [
+      "Data"
+    ],
+    "display_name": "Select Data",
+    "documentation": "",
+    "minimized": false,
+    "custom_fields": {},
+    "output_types": [],
+    "pinned": false,
+    "conditional_paths": [],
+    "frozen": false,
+    "outputs": [
+      {
+        "types": [
+          "Data"
+        ],
+        "selected": "Data",
+        "name": "selected_data",
+        "display_name": "Selected Data",
+        "method": "select_data",
+        "value": "__UNDEFINED__",
+        "cache": true,
+        "allows_loop": false,
+        "tool_mode": true
+      }
+    ],
+    "field_order": [
+      "data_list",
+      "data_index"
+    ],
+    "beta": false,
+    "legacy": true,
+    "edited": false,
+    "metadata": {},
+    "tool_mode": false
+  },
+  "DataToDataFrame": {
+    "template": {
+      "_type": "Component",
+      "data_list": {
+        "tool_mode": false,
+        "trace_as_metadata": true,
+        "list": true,
+        "list_add_label": "Add More",
+        "trace_as_input": true,
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "data_list",
+        "value": "",
+        "display_name": "Data or Data List",
+        "advanced": false,
+        "input_types": [
+          "Data"
+        ],
+        "dynamic": false,
+        "info": "One or multiple Data objects to transform into a DataFrame.",
+        "title_case": false,
+        "type": "other",
+        "_input_type": "DataInput"
+      },
+      "code": {
+        "type": "code",
+        "required": true,
+        "placeholder": "",
+        "list": false,
+        "show": true,
+        "multiline": true,
+        "value": "from langflow.custom import Component\nfrom langflow.io import DataInput, Output\nfrom langflow.schema import Data, DataFrame\n\n\nclass DataToDataFrameComponent(Component):\n    display_name = \"Data \u2192 DataFrame\"\n    description = (\n        \"Converts one or multiple Data objects into a DataFrame. \"\n        \"Each Data object corresponds to one row. Fields from `.data` become columns, \"\n        \"and the `.text` (if present) is placed in a 'text' column.\"\n    )\n    icon = \"table\"\n    name = \"DataToDataFrame\"\n\n    inputs = [\n        DataInput(\n            name=\"data_list\",\n            display_name=\"Data or Data List\",\n            info=\"One or multiple Data objects to transform into a DataFrame.\",\n            is_list=True,\n        ),\n    ]\n\n    outputs = [\n        Output(\n            display_name=\"DataFrame\",\n            name=\"dataframe\",\n            method=\"build_dataframe\",\n            info=\"A DataFrame built from each Data object's fields plus a 'text' column.\",\n        ),\n    ]\n\n    def build_dataframe(self) -> DataFrame:\n        \"\"\"Builds a DataFrame from Data objects by combining their fields.\n\n        For each Data object:\n          - Merge item.data (dictionary) as columns\n          - If item.text is present, add 'text' column\n\n        Returns a DataFrame with one row per Data object.\n        \"\"\"\n        data_input = self.data_list\n\n        # If user passed a single Data, it might come in as a single object rather than a list\n        if not isinstance(data_input, list):\n            data_input = [data_input]\n\n        rows = []\n        for item in data_input:\n            if not isinstance(item, Data):\n                msg = f\"Expected Data objects, got {type(item)} instead.\"\n                raise TypeError(msg)\n\n            # Start with a copy of item.data or an empty dict\n            row_dict = dict(item.data) if item.data else {}\n\n            # If the Data object has text, store it under 'text' col\n            text_val = item.get_text()\n            if text_val:\n                row_dict[\"text\"] = text_val\n\n            rows.append(row_dict)\n\n        # Build a DataFrame from these row dictionaries\n        df_result = DataFrame(rows)\n        self.status = df_result  # store in self.status for logs\n        return df_result\n",
+        "fileTypes": [],
+        "file_path": "",
+        "password": false,
+        "name": "code",
+        "advanced": true,
+        "dynamic": true,
+        "info": "",
+        "load_from_db": false,
+        "title_case": false
+      }
+    },
+    "description": "Converts one or multiple Data objects into a DataFrame. Each Data object corresponds to one row. Fields from `.data` become columns, and the `.text` (if present) is placed in a 'text' column.",
+    "icon": "table",
+    "base_classes": [
+      "DataFrame"
+    ],
+    "display_name": "Data \u2192 DataFrame",
+    "documentation": "",
+    "minimized": false,
+    "custom_fields": {},
+    "output_types": [],
+    "pinned": false,
+    "conditional_paths": [],
+    "frozen": false,
+    "outputs": [
+      {
+        "types": [
+          "DataFrame"
+        ],
+        "selected": "DataFrame",
+        "name": "dataframe",
+        "display_name": "DataFrame",
+        "method": "build_dataframe",
+        "value": "__UNDEFINED__",
+        "cache": true,
+        "allows_loop": false,
+        "tool_mode": true
+      }
+    ],
+    "field_order": [
+      "data_list"
+    ],
+    "beta": false,
+    "legacy": false,
+    "edited": false,
+    "metadata": {},
+    "tool_mode": false
+  },
+  "DataFrameOperationsComponent": {
+    "template": {
+      "_type": "Component",
+      "df": {
+        "tool_mode": false,
+        "trace_as_metadata": true,
+        "list": false,
+        "list_add_label": "Add More",
+        "trace_as_input": true,
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "df",
+        "value": "",
+        "display_name": "DataFrame",
+        "advanced": false,
+        "input_types": [
+          "DataFrame"
+        ],
+        "dynamic": false,
+        "info": "The input DataFrame to operate on.",
+        "title_case": false,
+        "type": "other",
+        "_input_type": "DataFrameInput"
+      },
+      "ascending": {
+        "tool_mode": false,
+        "trace_as_metadata": true,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": false,
+        "placeholder": "",
+        "show": false,
+        "name": "ascending",
+        "value": true,
+        "display_name": "Sort Ascending",
+        "advanced": false,
+        "dynamic": true,
+        "info": "Whether to sort in ascending order.",
+        "title_case": false,
+        "type": "bool",
+        "_input_type": "BoolInput"
+      },
+      "code": {
+        "type": "code",
+        "required": true,
+        "placeholder": "",
+        "list": false,
+        "show": true,
+        "multiline": true,
+        "value": "from langflow.custom import Component\nfrom langflow.io import BoolInput, DataFrameInput, DropdownInput, IntInput, MessageTextInput, Output, StrInput\nfrom langflow.schema import DataFrame\n\n\nclass DataFrameOperationsComponent(Component):\n    display_name = \"DataFrame Operations\"\n    description = \"Perform various operations on a DataFrame.\"\n    icon = \"table\"\n\n    # Available operations\n    OPERATION_CHOICES = [\n        \"Add Column\",\n        \"Drop Column\",\n        \"Filter\",\n        \"Head\",\n        \"Rename Column\",\n        \"Replace Value\",\n        \"Select Columns\",\n        \"Sort\",\n        \"Tail\",\n    ]\n\n    inputs = [\n        DataFrameInput(\n            name=\"df\",\n            display_name=\"DataFrame\",\n            info=\"The input DataFrame to operate on.\",\n        ),\n        DropdownInput(\n            name=\"operation\",\n            display_name=\"Operation\",\n            options=OPERATION_CHOICES,\n            info=\"Select the DataFrame operation to perform.\",\n            real_time_refresh=True,\n        ),\n        StrInput(\n            name=\"column_name\",\n            display_name=\"Column Name\",\n            info=\"The column name to use for the operation.\",\n            dynamic=True,\n            show=False,\n        ),\n        MessageTextInput(\n            name=\"filter_value\",\n            display_name=\"Filter Value\",\n            info=\"The value to filter rows by.\",\n            dynamic=True,\n            show=False,\n        ),\n        BoolInput(\n            name=\"ascending\",\n            display_name=\"Sort Ascending\",\n            info=\"Whether to sort in ascending order.\",\n            dynamic=True,\n            show=False,\n            value=True,\n        ),\n        StrInput(\n            name=\"new_column_name\",\n            display_name=\"New Column Name\",\n            info=\"The new column name when renaming or adding a column.\",\n            dynamic=True,\n            show=False,\n        ),\n        MessageTextInput(\n            name=\"new_column_value\",\n            display_name=\"New Column Value\",\n            info=\"The value to populate the new column with.\",\n            dynamic=True,\n            show=False,\n        ),\n        StrInput(\n            name=\"columns_to_select\",\n            display_name=\"Columns to Select\",\n            dynamic=True,\n            is_list=True,\n            show=False,\n        ),\n        IntInput(\n            name=\"num_rows\",\n            display_name=\"Number of Rows\",\n            info=\"Number of rows to return (for head/tail).\",\n            dynamic=True,\n            show=False,\n            value=5,\n        ),\n        MessageTextInput(\n            name=\"replace_value\",\n            display_name=\"Value to Replace\",\n            info=\"The value to replace in the column.\",\n            dynamic=True,\n            show=False,\n        ),\n        MessageTextInput(\n            name=\"replacement_value\",\n            display_name=\"Replacement Value\",\n            info=\"The value to replace with.\",\n            dynamic=True,\n            show=False,\n        ),\n    ]\n\n    outputs = [\n        Output(\n            display_name=\"DataFrame\",\n            name=\"output\",\n            method=\"perform_operation\",\n            info=\"The resulting DataFrame after the operation.\",\n        )\n    ]\n\n    def update_build_config(self, build_config, field_value, field_name=None):\n        # Hide all dynamic fields by default\n        dynamic_fields = [\n            \"column_name\",\n            \"filter_value\",\n            \"ascending\",\n            \"new_column_name\",\n            \"new_column_value\",\n            \"columns_to_select\",\n            \"num_rows\",\n            \"replace_value\",\n            \"replacement_value\",\n        ]\n        for field in dynamic_fields:\n            build_config[field][\"show\"] = False\n\n        # Show relevant fields based on the selected operation\n        if field_name == \"operation\":\n            if field_value == \"Filter\":\n                build_config[\"column_name\"][\"show\"] = True\n                build_config[\"filter_value\"][\"show\"] = True\n            elif field_value == \"Sort\":\n                build_config[\"column_name\"][\"show\"] = True\n                build_config[\"ascending\"][\"show\"] = True\n            elif field_value == \"Drop Column\":\n                build_config[\"column_name\"][\"show\"] = True\n            elif field_value == \"Rename Column\":\n                build_config[\"column_name\"][\"show\"] = True\n                build_config[\"new_column_name\"][\"show\"] = True\n            elif field_value == \"Add Column\":\n                build_config[\"new_column_name\"][\"show\"] = True\n                build_config[\"new_column_value\"][\"show\"] = True\n            elif field_value == \"Select Columns\":\n                build_config[\"columns_to_select\"][\"show\"] = True\n            elif field_value in {\"Head\", \"Tail\"}:\n                build_config[\"num_rows\"][\"show\"] = True\n            elif field_value == \"Replace Value\":\n                build_config[\"column_name\"][\"show\"] = True\n                build_config[\"replace_value\"][\"show\"] = True\n                build_config[\"replacement_value\"][\"show\"] = True\n\n        return build_config\n\n    def perform_operation(self) -> DataFrame:\n        dataframe_copy = self.df.copy()\n        operation = self.operation\n\n        if operation == \"Filter\":\n            return self.filter_rows_by_value(dataframe_copy)\n        if operation == \"Sort\":\n            return self.sort_by_column(dataframe_copy)\n        if operation == \"Drop Column\":\n            return self.drop_column(dataframe_copy)\n        if operation == \"Rename Column\":\n            return self.rename_column(dataframe_copy)\n        if operation == \"Add Column\":\n            return self.add_column(dataframe_copy)\n        if operation == \"Select Columns\":\n            return self.select_columns(dataframe_copy)\n        if operation == \"Head\":\n            return self.head(dataframe_copy)\n        if operation == \"Tail\":\n            return self.tail(dataframe_copy)\n        if operation == \"Replace Value\":\n            return self.replace_values(dataframe_copy)\n        msg = f\"Unsupported operation: {operation}\"\n\n        raise ValueError(msg)\n\n    # Existing methods\n    def filter_rows_by_value(self, df: DataFrame) -> DataFrame:\n        return DataFrame(df[df[self.column_name] == self.filter_value])\n\n    def sort_by_column(self, df: DataFrame) -> DataFrame:\n        return DataFrame(df.sort_values(by=self.column_name, ascending=self.ascending))\n\n    def drop_column(self, df: DataFrame) -> DataFrame:\n        return DataFrame(df.drop(columns=[self.column_name]))\n\n    def rename_column(self, df: DataFrame) -> DataFrame:\n        return DataFrame(df.rename(columns={self.column_name: self.new_column_name}))\n\n    def add_column(self, df: DataFrame) -> DataFrame:\n        df[self.new_column_name] = [self.new_column_value] * len(df)\n        return DataFrame(df)\n\n    def select_columns(self, df: DataFrame) -> DataFrame:\n        columns = [col.strip() for col in self.columns_to_select]\n        return DataFrame(df[columns])\n\n    # New methods\n    def head(self, df: DataFrame) -> DataFrame:\n        return DataFrame(df.head(self.num_rows))\n\n    def tail(self, df: DataFrame) -> DataFrame:\n        return DataFrame(df.tail(self.num_rows))\n\n    def replace_values(self, df: DataFrame) -> DataFrame:\n        df[self.column_name] = df[self.column_name].replace(self.replace_value, self.replacement_value)\n        return DataFrame(df)\n",
+        "fileTypes": [],
+        "file_path": "",
+        "password": false,
+        "name": "code",
+        "advanced": true,
+        "dynamic": true,
+        "info": "",
+        "load_from_db": false,
+        "title_case": false
+      },
+      "column_name": {
+        "tool_mode": false,
+        "trace_as_metadata": true,
+        "load_from_db": false,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": false,
+        "placeholder": "",
+        "show": false,
+        "name": "column_name",
+        "value": "",
+        "display_name": "Column Name",
+        "advanced": false,
+        "dynamic": true,
+        "info": "The column name to use for the operation.",
+        "title_case": false,
+        "type": "str",
+        "_input_type": "StrInput"
+      },
+      "columns_to_select": {
+        "tool_mode": false,
+        "trace_as_metadata": true,
+        "load_from_db": false,
+        "list": true,
+        "list_add_label": "Add More",
+        "required": false,
+        "placeholder": "",
+        "show": false,
+        "name": "columns_to_select",
+        "value": "",
+        "display_name": "Columns to Select",
+        "advanced": false,
+        "dynamic": true,
+        "info": "",
+        "title_case": false,
+        "type": "str",
+        "_input_type": "StrInput"
+      },
+      "filter_value": {
+        "tool_mode": false,
+        "trace_as_input": true,
+        "trace_as_metadata": true,
+        "load_from_db": false,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": false,
+        "placeholder": "",
+        "show": false,
+        "name": "filter_value",
+        "value": "",
+        "display_name": "Filter Value",
+        "advanced": false,
+        "input_types": [
+          "Message"
+        ],
+        "dynamic": true,
+        "info": "The value to filter rows by.",
+        "title_case": false,
+        "type": "str",
+        "_input_type": "MessageTextInput"
+      },
+      "new_column_name": {
+        "tool_mode": false,
+        "trace_as_metadata": true,
+        "load_from_db": false,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": false,
+        "placeholder": "",
+        "show": false,
+        "name": "new_column_name",
+        "value": "",
+        "display_name": "New Column Name",
+        "advanced": false,
+        "dynamic": true,
+        "info": "The new column name when renaming or adding a column.",
+        "title_case": false,
+        "type": "str",
+        "_input_type": "StrInput"
+      },
+      "new_column_value": {
+        "tool_mode": false,
+        "trace_as_input": true,
+        "trace_as_metadata": true,
+        "load_from_db": false,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": false,
+        "placeholder": "",
+        "show": false,
+        "name": "new_column_value",
+        "value": "",
+        "display_name": "New Column Value",
+        "advanced": false,
+        "input_types": [
+          "Message"
+        ],
+        "dynamic": true,
+        "info": "The value to populate the new column with.",
+        "title_case": false,
+        "type": "str",
+        "_input_type": "MessageTextInput"
+      },
+      "num_rows": {
+        "tool_mode": false,
+        "trace_as_metadata": true,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": false,
+        "placeholder": "",
+        "show": false,
+        "name": "num_rows",
+        "value": 5,
+        "display_name": "Number of Rows",
+        "advanced": false,
+        "dynamic": true,
+        "info": "Number of rows to return (for head/tail).",
+        "title_case": false,
+        "type": "int",
+        "_input_type": "IntInput"
+      },
+      "operation": {
+        "tool_mode": false,
+        "trace_as_metadata": true,
+        "options": [
+          "Add Column",
+          "Drop Column",
+          "Filter",
+          "Head",
+          "Rename Column",
+          "Replace Value",
+          "Select Columns",
+          "Sort",
+          "Tail"
+        ],
+        "options_metadata": [],
+        "combobox": false,
+        "dialog_inputs": {},
+        "toggle": false,
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "operation",
+        "value": "",
+        "display_name": "Operation",
+        "advanced": false,
+        "dynamic": false,
+        "info": "Select the DataFrame operation to perform.",
+        "real_time_refresh": true,
+        "title_case": false,
+        "type": "str",
+        "_input_type": "DropdownInput"
+      },
+      "replace_value": {
+        "tool_mode": false,
+        "trace_as_input": true,
+        "trace_as_metadata": true,
+        "load_from_db": false,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": false,
+        "placeholder": "",
+        "show": false,
+        "name": "replace_value",
+        "value": "",
+        "display_name": "Value to Replace",
+        "advanced": false,
+        "input_types": [
+          "Message"
+        ],
+        "dynamic": true,
+        "info": "The value to replace in the column.",
+        "title_case": false,
+        "type": "str",
+        "_input_type": "MessageTextInput"
+      },
+      "replacement_value": {
+        "tool_mode": false,
+        "trace_as_input": true,
+        "trace_as_metadata": true,
+        "load_from_db": false,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": false,
+        "placeholder": "",
+        "show": false,
+        "name": "replacement_value",
+        "value": "",
+        "display_name": "Replacement Value",
+        "advanced": false,
+        "input_types": [
+          "Message"
+        ],
+        "dynamic": true,
+        "info": "The value to replace with.",
+        "title_case": false,
+        "type": "str",
+        "_input_type": "MessageTextInput"
+      }
+    },
+    "description": "Perform various operations on a DataFrame.",
+    "icon": "table",
+    "base_classes": [
+      "DataFrame"
+    ],
+    "display_name": "DataFrame Operations",
+    "documentation": "",
+    "minimized": false,
+    "custom_fields": {},
+    "output_types": [],
+    "pinned": false,
+    "conditional_paths": [],
+    "frozen": false,
+    "outputs": [
+      {
+        "types": [
+          "DataFrame"
+        ],
+        "selected": "DataFrame",
+        "name": "output",
+        "display_name": "DataFrame",
+        "method": "perform_operation",
+        "value": "__UNDEFINED__",
+        "cache": true,
+        "allows_loop": false,
+        "tool_mode": true
+      }
+    ],
+    "field_order": [
+      "df",
+      "operation",
+      "column_name",
+      "filter_value",
+      "ascending",
+      "new_column_name",
+      "new_column_value",
+      "columns_to_select",
+      "num_rows",
+      "replace_value",
+      "replacement_value"
+    ],
+    "beta": false,
+    "legacy": false,
+    "edited": false,
+    "metadata": {},
+    "tool_mode": false
+  },
+  "ParseData": {
+    "template": {
+      "_type": "Component",
+      "data": {
+        "tool_mode": false,
+        "trace_as_metadata": true,
+        "list": true,
+        "list_add_label": "Add More",
+        "trace_as_input": true,
+        "required": true,
+        "placeholder": "",
+        "show": true,
+        "name": "data",
+        "value": "",
+        "display_name": "Data",
+        "advanced": false,
+        "input_types": [
+          "Data"
+        ],
+        "dynamic": false,
+        "info": "The data to convert to text.",
+        "title_case": false,
+        "type": "other",
+        "_input_type": "DataInput"
+      },
+      "code": {
+        "type": "code",
+        "required": true,
+        "placeholder": "",
+        "list": false,
+        "show": true,
+        "multiline": true,
+        "value": "from langflow.custom import Component\nfrom langflow.helpers.data import data_to_text, data_to_text_list\nfrom langflow.io import DataInput, MultilineInput, Output, StrInput\nfrom langflow.schema import Data\nfrom langflow.schema.message import Message\n\n\nclass ParseDataComponent(Component):\n    display_name = \"Data to Message\"\n    description = \"Convert Data objects into Messages using any {field_name} from input data.\"\n    icon = \"message-square\"\n    name = \"ParseData\"\n    legacy = True\n    metadata = {\n        \"legacy_name\": \"Parse Data\",\n    }\n\n    inputs = [\n        DataInput(\n            name=\"data\",\n            display_name=\"Data\",\n            info=\"The data to convert to text.\",\n            is_list=True,\n            required=True,\n        ),\n        MultilineInput(\n            name=\"template\",\n            display_name=\"Template\",\n            info=\"The template to use for formatting the data. \"\n            \"It can contain the keys {text}, {data} or any other key in the Data.\",\n            value=\"{text}\",\n            required=True,\n        ),\n        StrInput(name=\"sep\", display_name=\"Separator\", advanced=True, value=\"\\n\"),\n    ]\n\n    outputs = [\n        Output(\n            display_name=\"Message\",\n            name=\"text\",\n            info=\"Data as a single Message, with each input Data separated by Separator\",\n            method=\"parse_data\",\n        ),\n        Output(\n            display_name=\"Data List\",\n            name=\"data_list\",\n            info=\"Data as a list of new Data, each having `text` formatted by Template\",\n            method=\"parse_data_as_list\",\n        ),\n    ]\n\n    def _clean_args(self) -> tuple[list[Data], str, str]:\n        data = self.data if isinstance(self.data, list) else [self.data]\n        template = self.template\n        sep = self.sep\n        return data, template, sep\n\n    def parse_data(self) -> Message:\n        data, template, sep = self._clean_args()\n        result_string = data_to_text(template, data, sep)\n        self.status = result_string\n        return Message(text=result_string)\n\n    def parse_data_as_list(self) -> list[Data]:\n        data, template, _ = self._clean_args()\n        text_list, data_list = data_to_text_list(template, data)\n        for item, text in zip(data_list, text_list, strict=True):\n            item.set_text(text)\n        self.status = data_list\n        return data_list\n",
+        "fileTypes": [],
+        "file_path": "",
+        "password": false,
+        "name": "code",
+        "advanced": true,
+        "dynamic": true,
+        "info": "",
+        "load_from_db": false,
+        "title_case": false
+      },
+      "sep": {
+        "tool_mode": false,
+        "trace_as_metadata": true,
+        "load_from_db": false,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "sep",
+        "value": "\n",
+        "display_name": "Separator",
+        "advanced": true,
+        "dynamic": false,
+        "info": "",
+        "title_case": false,
+        "type": "str",
+        "_input_type": "StrInput"
+      },
+      "template": {
+        "tool_mode": false,
+        "trace_as_input": true,
+        "multiline": true,
+        "trace_as_metadata": true,
+        "load_from_db": false,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": true,
+        "placeholder": "",
+        "show": true,
+        "name": "template",
+        "value": "{text}",
+        "display_name": "Template",
+        "advanced": false,
+        "input_types": [
+          "Message"
+        ],
+        "dynamic": false,
+        "info": "The template to use for formatting the data. It can contain the keys {text}, {data} or any other key in the Data.",
+        "title_case": false,
+        "copy_field": false,
+        "type": "str",
+        "_input_type": "MultilineInput"
+      }
+    },
+    "description": "Convert Data objects into Messages using any {field_name} from input data.",
+    "icon": "message-square",
+    "base_classes": [
+      "Data",
+      "Message"
+    ],
+    "display_name": "Data to Message",
+    "documentation": "",
+    "minimized": false,
+    "custom_fields": {},
+    "output_types": [],
+    "pinned": false,
+    "conditional_paths": [],
+    "frozen": false,
+    "outputs": [
+      {
+        "types": [
+          "Message"
+        ],
+        "selected": "Message",
+        "name": "text",
+        "display_name": "Message",
+        "method": "parse_data",
+        "value": "__UNDEFINED__",
+        "cache": true,
+        "allows_loop": false,
+        "tool_mode": true
+      },
+      {
+        "types": [
+          "Data"
+        ],
+        "selected": "Data",
+        "name": "data_list",
+        "display_name": "Data List",
+        "method": "parse_data_as_list",
+        "value": "__UNDEFINED__",
+        "cache": true,
+        "allows_loop": false,
+        "tool_mode": true
+      }
+    ],
+    "field_order": [
+      "data",
+      "template",
+      "sep"
+    ],
+    "beta": false,
+    "legacy": true,
+    "edited": false,
+    "metadata": {
+      "legacy_name": "Parse Data"
+    },
+    "tool_mode": false
+  },
+  "CreateData": {
+    "template": {
+      "_type": "Component",
+      "code": {
+        "type": "code",
+        "required": true,
+        "placeholder": "",
+        "list": false,
+        "show": true,
+        "multiline": true,
+        "value": "from typing import Any\n\nfrom langflow.custom import Component\nfrom langflow.field_typing.range_spec import RangeSpec\nfrom langflow.inputs.inputs import BoolInput, DictInput, IntInput, MessageTextInput\nfrom langflow.io import Output\nfrom langflow.schema import Data\nfrom langflow.schema.dotdict import dotdict\n\n\nclass CreateDataComponent(Component):\n    display_name: str = \"Create Data\"\n    description: str = \"Dynamically create a Data with a specified number of fields.\"\n    name: str = \"CreateData\"\n    MAX_FIELDS = 15  # Define a constant for maximum number of fields\n    legacy = True\n    icon = \"ListFilter\"\n\n    inputs = [\n        IntInput(\n            name=\"number_of_fields\",\n            display_name=\"Number of Fields\",\n            info=\"Number of fields to be added to the record.\",\n            real_time_refresh=True,\n            value=1,\n            range_spec=RangeSpec(min=1, max=MAX_FIELDS, step=1, step_type=\"int\"),\n        ),\n        MessageTextInput(\n            name=\"text_key\",\n            display_name=\"Text Key\",\n            info=\"Key that identifies the field to be used as the text content.\",\n            advanced=True,\n        ),\n        BoolInput(\n            name=\"text_key_validator\",\n            display_name=\"Text Key Validator\",\n            advanced=True,\n            info=\"If enabled, checks if the given 'Text Key' is present in the given 'Data'.\",\n        ),\n    ]\n\n    outputs = [\n        Output(display_name=\"Data\", name=\"data\", method=\"build_data\"),\n    ]\n\n    def update_build_config(self, build_config: dotdict, field_value: Any, field_name: str | None = None):\n        if field_name == \"number_of_fields\":\n            default_keys = [\"code\", \"_type\", \"number_of_fields\", \"text_key\", \"text_key_validator\"]\n            try:\n                field_value_int = int(field_value)\n            except ValueError:\n                return build_config\n            existing_fields = {}\n            if field_value_int > self.MAX_FIELDS:\n                build_config[\"number_of_fields\"][\"value\"] = self.MAX_FIELDS\n                msg = (\n                    f\"Number of fields cannot exceed {self.MAX_FIELDS}. \"\n                    \"Please adjust the number of fields to be within the allowed limit.\"\n                )\n                raise ValueError(msg)\n            if len(build_config) > len(default_keys):\n                # back up the existing template fields\n                for key in build_config.copy():\n                    if key not in default_keys:\n                        existing_fields[key] = build_config.pop(key)\n\n            for i in range(1, field_value_int + 1):\n                key = f\"field_{i}_key\"\n                if key in existing_fields:\n                    field = existing_fields[key]\n                    build_config[key] = field\n                else:\n                    field = DictInput(\n                        display_name=f\"Field {i}\",\n                        name=key,\n                        info=f\"Key for field {i}.\",\n                        input_types=[\"Message\", \"Data\"],\n                    )\n                    build_config[field.name] = field.to_dict()\n\n            build_config[\"number_of_fields\"][\"value\"] = field_value_int\n        return build_config\n\n    async def build_data(self) -> Data:\n        data = self.get_data()\n        return_data = Data(data=data, text_key=self.text_key)\n        self.status = return_data\n        if self.text_key_validator:\n            self.validate_text_key()\n        return return_data\n\n    def get_data(self):\n        \"\"\"Function to get the Data from the attributes.\"\"\"\n        data = {}\n        for value_dict in self._attributes.values():\n            if isinstance(value_dict, dict):\n                # Check if the value of the value_dict is a Data\n                value_dict_ = {\n                    key: value.get_text() if isinstance(value, Data) else value for key, value in value_dict.items()\n                }\n                data.update(value_dict_)\n        return data\n\n    def validate_text_key(self) -> None:\n        \"\"\"This function validates that the Text Key is one of the keys in the Data.\"\"\"\n        data_keys = self.get_data().keys()\n        if self.text_key not in data_keys and self.text_key != \"\":\n            formatted_data_keys = \", \".join(data_keys)\n            msg = f\"Text Key: '{self.text_key}' not found in the Data keys: '{formatted_data_keys}'\"\n            raise ValueError(msg)\n",
+        "fileTypes": [],
+        "file_path": "",
+        "password": false,
+        "name": "code",
+        "advanced": true,
+        "dynamic": true,
+        "info": "",
+        "load_from_db": false,
+        "title_case": false
+      },
+      "number_of_fields": {
+        "tool_mode": false,
+        "trace_as_metadata": true,
+        "range_spec": {
+          "step_type": "int",
+          "min": 1,
+          "max": 15,
+          "step": 1
+        },
+        "list": false,
+        "list_add_label": "Add More",
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "number_of_fields",
+        "value": 1,
+        "display_name": "Number of Fields",
+        "advanced": false,
+        "dynamic": false,
+        "info": "Number of fields to be added to the record.",
+        "real_time_refresh": true,
+        "title_case": false,
+        "type": "int",
+        "_input_type": "IntInput"
+      },
+      "text_key": {
+        "tool_mode": false,
+        "trace_as_input": true,
+        "trace_as_metadata": true,
+        "load_from_db": false,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "text_key",
+        "value": "",
+        "display_name": "Text Key",
+        "advanced": true,
+        "input_types": [
+          "Message"
+        ],
+        "dynamic": false,
+        "info": "Key that identifies the field to be used as the text content.",
+        "title_case": false,
+        "type": "str",
+        "_input_type": "MessageTextInput"
+      },
+      "text_key_validator": {
+        "tool_mode": false,
+        "trace_as_metadata": true,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "text_key_validator",
+        "value": false,
+        "display_name": "Text Key Validator",
+        "advanced": true,
+        "dynamic": false,
+        "info": "If enabled, checks if the given 'Text Key' is present in the given 'Data'.",
+        "title_case": false,
+        "type": "bool",
+        "_input_type": "BoolInput"
+      }
+    },
+    "description": "Dynamically create a Data with a specified number of fields.",
+    "icon": "ListFilter",
+    "base_classes": [
+      "Data"
+    ],
+    "display_name": "Create Data",
+    "documentation": "",
+    "minimized": false,
+    "custom_fields": {},
+    "output_types": [],
+    "pinned": false,
+    "conditional_paths": [],
+    "frozen": false,
+    "outputs": [
+      {
+        "types": [
+          "Data"
+        ],
+        "selected": "Data",
+        "name": "data",
+        "display_name": "Data",
+        "method": "build_data",
+        "value": "__UNDEFINED__",
+        "cache": true,
+        "allows_loop": false,
+        "tool_mode": true
+      }
+    ],
+    "field_order": [
+      "number_of_fields",
+      "text_key",
+      "text_key_validator"
+    ],
+    "beta": false,
+    "legacy": true,
+    "edited": false,
+    "metadata": {},
+    "tool_mode": false
+  },
+  "RegexExtractorComponent": {
+    "template": {
+      "_type": "Component",
+      "code": {
+        "type": "code",
+        "required": true,
+        "placeholder": "",
+        "list": false,
+        "show": true,
+        "multiline": true,
+        "value": "import re\n\nfrom langflow.custom import Component\nfrom langflow.io import MessageTextInput, Output\nfrom langflow.schema import Data\nfrom langflow.schema.message import Message\n\n\nclass RegexExtractorComponent(Component):\n    display_name = \"Regex Extractor\"\n    description = \"Extract patterns from text using regular expressions.\"\n    icon = \"regex\"\n\n    inputs = [\n        MessageTextInput(\n            name=\"input_text\",\n            display_name=\"Input Text\",\n            info=\"The text to analyze\",\n            required=True,\n        ),\n        MessageTextInput(\n            name=\"pattern\",\n            display_name=\"Regex Pattern\",\n            info=\"The regular expression pattern to match\",\n            value=r\"\",\n            required=True,\n            tool_mode=True,\n        ),\n    ]\n\n    outputs = [\n        Output(display_name=\"Data\", name=\"data\", method=\"extract_matches\"),\n        Output(display_name=\"Message\", name=\"text\", method=\"get_matches_text\"),\n    ]\n\n    def extract_matches(self) -> list[Data]:\n        if not self.pattern or not self.input_text:\n            self.status = []\n            return []\n\n        try:\n            # Compile regex pattern\n            pattern = re.compile(self.pattern)\n\n            # Find all matches in the input text\n            matches = pattern.findall(self.input_text)\n\n            # Filter out empty matches\n            filtered_matches = [match for match in matches if match]  # Remove empty matches\n\n            # Return empty list for no matches, or list of matches if found\n            result: list = [] if not filtered_matches else [Data(data={\"match\": match}) for match in filtered_matches]\n\n        except re.error as e:\n            error_message = f\"Invalid regex pattern: {e!s}\"\n            result = [Data(data={\"error\": error_message})]\n        except ValueError as e:\n            error_message = f\"Error extracting matches: {e!s}\"\n            result = [Data(data={\"error\": error_message})]\n\n        self.status = result\n        return result\n\n    def get_matches_text(self) -> Message:\n        \"\"\"Get matches as a formatted text message.\"\"\"\n        matches = self.extract_matches()\n\n        if not matches:\n            message = Message(text=\"No matches found\")\n            self.status = message\n            return message\n\n        if \"error\" in matches[0].data:\n            message = Message(text=matches[0].data[\"error\"])\n            self.status = message\n            return message\n\n        result = \"\\n\".join(match.data[\"match\"] for match in matches)\n        message = Message(text=result)\n        self.status = message\n        return message\n",
+        "fileTypes": [],
+        "file_path": "",
+        "password": false,
+        "name": "code",
+        "advanced": true,
+        "dynamic": true,
+        "info": "",
+        "load_from_db": false,
+        "title_case": false
+      },
+      "input_text": {
+        "tool_mode": false,
+        "trace_as_input": true,
+        "trace_as_metadata": true,
+        "load_from_db": false,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": true,
+        "placeholder": "",
+        "show": true,
+        "name": "input_text",
+        "value": "",
+        "display_name": "Input Text",
+        "advanced": false,
+        "input_types": [
+          "Message"
+        ],
+        "dynamic": false,
+        "info": "The text to analyze",
+        "title_case": false,
+        "type": "str",
+        "_input_type": "MessageTextInput"
+      },
+      "pattern": {
+        "tool_mode": true,
+        "trace_as_input": true,
+        "trace_as_metadata": true,
+        "load_from_db": false,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": true,
+        "placeholder": "",
+        "show": true,
+        "name": "pattern",
+        "value": "",
+        "display_name": "Regex Pattern",
+        "advanced": false,
+        "input_types": [
+          "Message"
+        ],
+        "dynamic": false,
+        "info": "The regular expression pattern to match",
+        "title_case": false,
+        "type": "str",
+        "_input_type": "MessageTextInput"
+      }
+    },
+    "description": "Extract patterns from text using regular expressions.",
+    "icon": "regex",
+    "base_classes": [
+      "Data",
+      "Message"
+    ],
+    "display_name": "Regex Extractor",
+    "documentation": "",
+    "minimized": false,
+    "custom_fields": {},
+    "output_types": [],
+    "pinned": false,
+    "conditional_paths": [],
+    "frozen": false,
+    "outputs": [
+      {
+        "types": [
+          "Data"
+        ],
+        "selected": "Data",
+        "name": "data",
+        "display_name": "Data",
+        "method": "extract_matches",
+        "value": "__UNDEFINED__",
+        "cache": true,
+        "allows_loop": false,
+        "tool_mode": true
+      },
+      {
+        "types": [
+          "Message"
+        ],
+        "selected": "Message",
+        "name": "text",
+        "display_name": "Message",
+        "method": "get_matches_text",
+        "value": "__UNDEFINED__",
+        "cache": true,
+        "allows_loop": false,
+        "tool_mode": true
+      }
+    ],
+    "field_order": [
+      "input_text",
+      "pattern"
+    ],
+    "beta": false,
+    "legacy": false,
+    "edited": false,
+    "metadata": {},
+    "tool_mode": false
+  },
+  "MessagetoData": {
+    "template": {
+      "_type": "Component",
+      "code": {
+        "type": "code",
+        "required": true,
+        "placeholder": "",
+        "list": false,
+        "show": true,
+        "multiline": true,
+        "value": "from loguru import logger\n\nfrom langflow.custom import Component\nfrom langflow.io import MessageInput, Output\nfrom langflow.schema import Data\nfrom langflow.schema.message import Message\n\n\nclass MessageToDataComponent(Component):\n    display_name = \"Message to Data\"\n    description = \"Convert a Message object to a Data object\"\n    icon = \"message-square-share\"\n    beta = True\n    name = \"MessagetoData\"\n\n    inputs = [\n        MessageInput(\n            name=\"message\",\n            display_name=\"Message\",\n            info=\"The Message object to convert to a Data object\",\n        ),\n    ]\n\n    outputs = [\n        Output(display_name=\"Data\", name=\"data\", method=\"convert_message_to_data\"),\n    ]\n\n    def convert_message_to_data(self) -> Data:\n        if isinstance(self.message, Message):\n            # Convert Message to Data\n            return Data(data=self.message.data)\n\n        msg = \"Error converting Message to Data: Input must be a Message object\"\n        logger.opt(exception=True).debug(msg)\n        self.status = msg\n        return Data(data={\"error\": msg})\n",
+        "fileTypes": [],
+        "file_path": "",
+        "password": false,
+        "name": "code",
+        "advanced": true,
+        "dynamic": true,
+        "info": "",
+        "load_from_db": false,
+        "title_case": false
+      },
+      "message": {
+        "trace_as_input": true,
+        "tool_mode": false,
+        "trace_as_metadata": true,
+        "load_from_db": false,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "message",
+        "value": "",
+        "display_name": "Message",
+        "advanced": false,
+        "input_types": [
+          "Message"
+        ],
+        "dynamic": false,
+        "info": "The Message object to convert to a Data object",
+        "title_case": false,
+        "type": "str",
+        "_input_type": "MessageInput"
+      }
+    },
+    "description": "Convert a Message object to a Data object",
+    "icon": "message-square-share",
+    "base_classes": [
+      "Data"
+    ],
+    "display_name": "Message to Data",
+    "documentation": "",
+    "minimized": false,
+    "custom_fields": {},
+    "output_types": [],
+    "pinned": false,
+    "conditional_paths": [],
+    "frozen": false,
+    "outputs": [
+      {
+        "types": [
+          "Data"
+        ],
+        "selected": "Data",
+        "name": "data",
+        "display_name": "Data",
+        "method": "convert_message_to_data",
+        "value": "__UNDEFINED__",
+        "cache": true,
+        "allows_loop": false,
+        "tool_mode": true
+      }
+    ],
+    "field_order": [
+      "message"
+    ],
+    "beta": true,
+    "legacy": false,
+    "edited": false,
+    "metadata": {},
+    "tool_mode": false
+  },
+  "FilterDataValues": {
+    "template": {
+      "_type": "Component",
+      "input_data": {
+        "tool_mode": false,
+        "trace_as_metadata": true,
+        "list": true,
+        "list_add_label": "Add More",
+        "trace_as_input": true,
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "input_data",
+        "value": "",
+        "display_name": "Input Data",
+        "advanced": false,
+        "input_types": [
+          "Data"
+        ],
+        "dynamic": false,
+        "info": "The list of data items to filter.",
+        "title_case": false,
+        "type": "other",
+        "_input_type": "DataInput"
+      },
+      "code": {
+        "type": "code",
+        "required": true,
+        "placeholder": "",
+        "list": false,
+        "show": true,
+        "multiline": true,
+        "value": "from typing import Any\n\nfrom langflow.custom import Component\nfrom langflow.io import DataInput, DropdownInput, MessageTextInput, Output\nfrom langflow.schema import Data\n\n\nclass DataFilterComponent(Component):\n    display_name = \"Filter Values\"\n    description = (\n        \"Filter a list of data items based on a specified key, filter value,\"\n        \" and comparison operator. Check advanced options to select match comparision.\"\n    )\n    icon = \"filter\"\n    beta = True\n    name = \"FilterDataValues\"\n\n    inputs = [\n        DataInput(name=\"input_data\", display_name=\"Input Data\", info=\"The list of data items to filter.\", is_list=True),\n        MessageTextInput(\n            name=\"filter_key\",\n            display_name=\"Filter Key\",\n            info=\"The key to filter on (e.g., 'route').\",\n            value=\"route\",\n            input_types=[\"Data\"],\n        ),\n        MessageTextInput(\n            name=\"filter_value\",\n            display_name=\"Filter Value\",\n            info=\"The value to filter by (e.g., 'CMIP').\",\n            value=\"CMIP\",\n            input_types=[\"Data\"],\n        ),\n        DropdownInput(\n            name=\"operator\",\n            display_name=\"Comparison Operator\",\n            options=[\"equals\", \"not equals\", \"contains\", \"starts with\", \"ends with\"],\n            info=\"The operator to apply for comparing the values.\",\n            value=\"equals\",\n            advanced=True,\n        ),\n    ]\n\n    outputs = [\n        Output(display_name=\"Filtered Data\", name=\"filtered_data\", method=\"filter_data\"),\n    ]\n\n    def compare_values(self, item_value: Any, filter_value: str, operator: str) -> bool:\n        if operator == \"equals\":\n            return str(item_value) == filter_value\n        if operator == \"not equals\":\n            return str(item_value) != filter_value\n        if operator == \"contains\":\n            return filter_value in str(item_value)\n        if operator == \"starts with\":\n            return str(item_value).startswith(filter_value)\n        if operator == \"ends with\":\n            return str(item_value).endswith(filter_value)\n        return False\n\n    def filter_data(self) -> list[Data]:\n        # Extract inputs\n        input_data: list[Data] = self.input_data\n        filter_key: str = self.filter_key.text\n        filter_value: str = self.filter_value.text\n        operator: str = self.operator\n\n        # Validate inputs\n        if not input_data:\n            self.status = \"Input data is empty.\"\n            return []\n\n        if not filter_key or not filter_value:\n            self.status = \"Filter key or value is missing.\"\n            return input_data\n\n        # Filter the data\n        filtered_data = []\n        for item in input_data:\n            if isinstance(item.data, dict) and filter_key in item.data:\n                if self.compare_values(item.data[filter_key], filter_value, operator):\n                    filtered_data.append(item)\n            else:\n                self.status = f\"Warning: Some items don't have the key '{filter_key}' or are not dictionaries.\"\n\n        self.status = filtered_data\n        return filtered_data\n",
+        "fileTypes": [],
+        "file_path": "",
+        "password": false,
+        "name": "code",
+        "advanced": true,
+        "dynamic": true,
+        "info": "",
+        "load_from_db": false,
+        "title_case": false
+      },
+      "filter_key": {
+        "tool_mode": false,
+        "trace_as_input": true,
+        "trace_as_metadata": true,
+        "load_from_db": false,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "filter_key",
+        "value": "route",
+        "display_name": "Filter Key",
+        "advanced": false,
+        "input_types": [
+          "Data"
+        ],
+        "dynamic": false,
+        "info": "The key to filter on (e.g., 'route').",
+        "title_case": false,
+        "type": "str",
+        "_input_type": "MessageTextInput"
+      },
+      "filter_value": {
+        "tool_mode": false,
+        "trace_as_input": true,
+        "trace_as_metadata": true,
+        "load_from_db": false,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "filter_value",
+        "value": "CMIP",
+        "display_name": "Filter Value",
+        "advanced": false,
+        "input_types": [
+          "Data"
+        ],
+        "dynamic": false,
+        "info": "The value to filter by (e.g., 'CMIP').",
+        "title_case": false,
+        "type": "str",
+        "_input_type": "MessageTextInput"
+      },
+      "operator": {
+        "tool_mode": false,
+        "trace_as_metadata": true,
+        "options": [
+          "equals",
+          "not equals",
+          "contains",
+          "starts with",
+          "ends with"
+        ],
+        "options_metadata": [],
+        "combobox": false,
+        "dialog_inputs": {},
+        "toggle": false,
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "operator",
+        "value": "equals",
+        "display_name": "Comparison Operator",
+        "advanced": true,
+        "dynamic": false,
+        "info": "The operator to apply for comparing the values.",
+        "title_case": false,
+        "type": "str",
+        "_input_type": "DropdownInput"
+      }
+    },
+    "description": "Filter a list of data items based on a specified key, filter value, and comparison operator. Check advanced options to select match comparision.",
+    "icon": "filter",
+    "base_classes": [
+      "Data"
+    ],
+    "display_name": "Filter Values",
+    "documentation": "",
+    "minimized": false,
+    "custom_fields": {},
+    "output_types": [],
+    "pinned": false,
+    "conditional_paths": [],
+    "frozen": false,
+    "outputs": [
+      {
+        "types": [
+          "Data"
+        ],
+        "selected": "Data",
+        "name": "filtered_data",
+        "display_name": "Filtered Data",
+        "method": "filter_data",
+        "value": "__UNDEFINED__",
+        "cache": true,
+        "allows_loop": false,
+        "tool_mode": true
+      }
+    ],
+    "field_order": [
+      "input_data",
+      "filter_key",
+      "filter_value",
+      "operator"
+    ],
+    "beta": true,
+    "legacy": false,
+    "edited": false,
+    "metadata": {},
+    "tool_mode": false
+  }
+}

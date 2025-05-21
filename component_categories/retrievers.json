@@ -1,0 +1,467 @@
+{
+  "AmazonKendra": {
+    "template": {
+      "_type": "CustomComponent",
+      "attribute_filter": {
+        "type": "dict | None",
+        "required": false,
+        "placeholder": "",
+        "list": false,
+        "show": true,
+        "multiline": false,
+        "fileTypes": [],
+        "file_path": "",
+        "name": "attribute_filter",
+        "display_name": "Attribute Filter",
+        "advanced": false,
+        "dynamic": false,
+        "info": "",
+        "load_from_db": false,
+        "title_case": false
+      },
+      "credentials_profile_name": {
+        "type": "str | None",
+        "required": false,
+        "placeholder": "",
+        "list": false,
+        "show": true,
+        "multiline": false,
+        "fileTypes": [],
+        "file_path": "",
+        "name": "credentials_profile_name",
+        "display_name": "Credentials Profile Name",
+        "advanced": false,
+        "dynamic": false,
+        "info": "",
+        "load_from_db": false,
+        "title_case": false
+      },
+      "region_name": {
+        "type": "str | None",
+        "required": false,
+        "placeholder": "",
+        "list": false,
+        "show": true,
+        "multiline": false,
+        "fileTypes": [],
+        "file_path": "",
+        "name": "region_name",
+        "display_name": "Region Name",
+        "advanced": false,
+        "dynamic": false,
+        "info": "",
+        "load_from_db": false,
+        "title_case": false
+      },
+      "user_context": {
+        "type": "dict | None",
+        "required": false,
+        "placeholder": "",
+        "list": false,
+        "show": true,
+        "multiline": false,
+        "fileTypes": [],
+        "file_path": "",
+        "name": "user_context",
+        "display_name": "User Context",
+        "advanced": false,
+        "dynamic": false,
+        "info": "",
+        "load_from_db": false,
+        "title_case": false
+      },
+      "code": {
+        "type": "code",
+        "required": true,
+        "placeholder": "",
+        "list": false,
+        "show": true,
+        "multiline": true,
+        "value": "from typing import cast\n\nfrom langchain_community.retrievers import AmazonKendraRetriever\n\nfrom langflow.custom import CustomComponent\nfrom langflow.field_typing import Retriever\n\n\nclass AmazonKendraRetrieverComponent(CustomComponent):\n    display_name: str = \"Amazon Kendra Retriever\"\n    description: str = \"Retriever that uses the Amazon Kendra API.\"\n    name = \"AmazonKendra\"\n    icon = \"Amazon\"\n    legacy: bool = True\n\n    def build_config(self):\n        return {\n            \"index_id\": {\"display_name\": \"Index ID\"},\n            \"region_name\": {\"display_name\": \"Region Name\"},\n            \"credentials_profile_name\": {\"display_name\": \"Credentials Profile Name\"},\n            \"attribute_filter\": {\n                \"display_name\": \"Attribute Filter\",\n                \"field_type\": \"code\",\n            },\n            \"top_k\": {\"display_name\": \"Top K\", \"field_type\": \"int\"},\n            \"user_context\": {\n                \"display_name\": \"User Context\",\n                \"field_type\": \"code\",\n            },\n            \"code\": {\"show\": False},\n        }\n\n    def build(\n        self,\n        index_id: str,\n        top_k: int = 3,\n        region_name: str | None = None,\n        credentials_profile_name: str | None = None,\n        attribute_filter: dict | None = None,\n        user_context: dict | None = None,\n    ) -> Retriever:  # type: ignore[type-var]\n        try:\n            output = AmazonKendraRetriever(\n                index_id=index_id,\n                top_k=top_k,\n                region_name=region_name,\n                credentials_profile_name=credentials_profile_name,\n                attribute_filter=attribute_filter,\n                user_context=user_context,\n            )\n        except Exception as e:\n            msg = \"Could not connect to AmazonKendra API.\"\n            raise ValueError(msg) from e\n        return cast(\"Retriever\", output)\n",
+        "fileTypes": [],
+        "file_path": "",
+        "password": false,
+        "name": "code",
+        "advanced": true,
+        "dynamic": true,
+        "info": "",
+        "load_from_db": false,
+        "title_case": false
+      },
+      "index_id": {
+        "type": "str",
+        "required": true,
+        "placeholder": "",
+        "list": false,
+        "show": true,
+        "multiline": false,
+        "fileTypes": [],
+        "file_path": "",
+        "name": "index_id",
+        "display_name": "Index ID",
+        "advanced": false,
+        "dynamic": false,
+        "info": "",
+        "load_from_db": false,
+        "title_case": false,
+        "input_types": [
+          "Text"
+        ]
+      },
+      "top_k": {
+        "type": "int",
+        "required": false,
+        "placeholder": "",
+        "list": false,
+        "show": true,
+        "multiline": false,
+        "value": 3,
+        "fileTypes": [],
+        "file_path": "",
+        "name": "top_k",
+        "display_name": "Top K",
+        "advanced": false,
+        "dynamic": false,
+        "info": "",
+        "load_from_db": false,
+        "title_case": false
+      }
+    },
+    "description": "Retriever that uses the Amazon Kendra API.",
+    "icon": "Amazon",
+    "base_classes": [
+      "Retriever"
+    ],
+    "display_name": "Amazon Kendra Retriever",
+    "documentation": "",
+    "minimized": false,
+    "custom_fields": {
+      "index_id": null,
+      "top_k": null,
+      "region_name": null,
+      "credentials_profile_name": null,
+      "attribute_filter": null,
+      "user_context": null
+    },
+    "output_types": [
+      "Retriever"
+    ],
+    "pinned": false,
+    "conditional_paths": [],
+    "frozen": false,
+    "outputs": [
+      {
+        "types": [
+          "Retriever"
+        ],
+        "selected": "Retriever",
+        "name": "retriever",
+        "hidden": null,
+        "display_name": "Retriever",
+        "method": null,
+        "value": "__UNDEFINED__",
+        "cache": true,
+        "required_inputs": null,
+        "allows_loop": false,
+        "options": null,
+        "tool_mode": true
+      }
+    ],
+    "field_order": [],
+    "beta": false,
+    "legacy": true,
+    "edited": false,
+    "metadata": {},
+    "tool_mode": false
+  },
+  "MetalRetriever": {
+    "template": {
+      "_type": "CustomComponent",
+      "params": {
+        "type": "dict | None",
+        "required": false,
+        "placeholder": "",
+        "list": false,
+        "show": true,
+        "multiline": false,
+        "fileTypes": [],
+        "file_path": "",
+        "name": "params",
+        "display_name": "Parameters",
+        "advanced": false,
+        "dynamic": false,
+        "info": "",
+        "load_from_db": false,
+        "title_case": false
+      },
+      "api_key": {
+        "type": "str",
+        "required": true,
+        "placeholder": "",
+        "list": false,
+        "show": true,
+        "multiline": false,
+        "fileTypes": [],
+        "file_path": "",
+        "password": true,
+        "name": "api_key",
+        "display_name": "API Key",
+        "advanced": false,
+        "dynamic": false,
+        "info": "",
+        "load_from_db": false,
+        "title_case": false,
+        "input_types": [
+          "Text"
+        ]
+      },
+      "client_id": {
+        "type": "str",
+        "required": true,
+        "placeholder": "",
+        "list": false,
+        "show": true,
+        "multiline": false,
+        "fileTypes": [],
+        "file_path": "",
+        "password": true,
+        "name": "client_id",
+        "display_name": "Client ID",
+        "advanced": false,
+        "dynamic": false,
+        "info": "",
+        "load_from_db": false,
+        "title_case": false,
+        "input_types": [
+          "Text"
+        ]
+      },
+      "code": {
+        "type": "code",
+        "required": true,
+        "placeholder": "",
+        "list": false,
+        "show": true,
+        "multiline": true,
+        "value": "from typing import cast\n\nfrom langchain_community.retrievers import MetalRetriever\nfrom metal_sdk.metal import Metal\n\nfrom langflow.custom import CustomComponent\nfrom langflow.field_typing import Retriever\n\n\nclass MetalRetrieverComponent(CustomComponent):\n    display_name: str = \"Metal Retriever\"\n    description: str = \"Retriever that uses the Metal API.\"\n    name = \"MetalRetriever\"\n    legacy: bool = True\n\n    def build_config(self):\n        return {\n            \"api_key\": {\"display_name\": \"API Key\", \"password\": True},\n            \"client_id\": {\"display_name\": \"Client ID\", \"password\": True},\n            \"index_id\": {\"display_name\": \"Index ID\"},\n            \"params\": {\"display_name\": \"Parameters\"},\n            \"code\": {\"show\": False},\n        }\n\n    def build(self, api_key: str, client_id: str, index_id: str, params: dict | None = None) -> Retriever:  # type: ignore[type-var]\n        try:\n            metal = Metal(api_key=api_key, client_id=client_id, index_id=index_id)\n        except Exception as e:\n            msg = \"Could not connect to Metal API.\"\n            raise ValueError(msg) from e\n        return cast(\"Retriever\", MetalRetriever(client=metal, params=params or {}))\n",
+        "fileTypes": [],
+        "file_path": "",
+        "password": false,
+        "name": "code",
+        "advanced": true,
+        "dynamic": true,
+        "info": "",
+        "load_from_db": false,
+        "title_case": false
+      },
+      "index_id": {
+        "type": "str",
+        "required": true,
+        "placeholder": "",
+        "list": false,
+        "show": true,
+        "multiline": false,
+        "fileTypes": [],
+        "file_path": "",
+        "name": "index_id",
+        "display_name": "Index ID",
+        "advanced": false,
+        "dynamic": false,
+        "info": "",
+        "load_from_db": false,
+        "title_case": false,
+        "input_types": [
+          "Text"
+        ]
+      }
+    },
+    "description": "Retriever that uses the Metal API.",
+    "base_classes": [
+      "Retriever"
+    ],
+    "display_name": "Metal Retriever",
+    "documentation": "",
+    "minimized": false,
+    "custom_fields": {
+      "api_key": null,
+      "client_id": null,
+      "index_id": null,
+      "params": null
+    },
+    "output_types": [
+      "Retriever"
+    ],
+    "pinned": false,
+    "conditional_paths": [],
+    "frozen": false,
+    "outputs": [
+      {
+        "types": [
+          "Retriever"
+        ],
+        "selected": "Retriever",
+        "name": "retriever",
+        "hidden": null,
+        "display_name": "Retriever",
+        "method": null,
+        "value": "__UNDEFINED__",
+        "cache": true,
+        "required_inputs": null,
+        "allows_loop": false,
+        "options": null,
+        "tool_mode": true
+      }
+    ],
+    "field_order": [],
+    "beta": false,
+    "legacy": true,
+    "edited": false,
+    "metadata": {},
+    "tool_mode": false
+  },
+  "MultiQueryRetriever": {
+    "template": {
+      "_type": "CustomComponent",
+      "llm": {
+        "type": "LanguageModel",
+        "required": true,
+        "placeholder": "",
+        "list": false,
+        "show": true,
+        "multiline": false,
+        "fileTypes": [],
+        "file_path": "",
+        "name": "llm",
+        "display_name": "LLM",
+        "advanced": false,
+        "dynamic": false,
+        "info": "",
+        "load_from_db": false,
+        "title_case": false
+      },
+      "prompt": {
+        "type": "Text | None",
+        "required": false,
+        "placeholder": "",
+        "list": false,
+        "show": true,
+        "multiline": false,
+        "fileTypes": [],
+        "file_path": "",
+        "name": "prompt",
+        "display_name": "Prompt",
+        "advanced": false,
+        "dynamic": false,
+        "info": "",
+        "load_from_db": false,
+        "title_case": false
+      },
+      "retriever": {
+        "type": "BaseRetriever",
+        "required": true,
+        "placeholder": "",
+        "list": false,
+        "show": true,
+        "multiline": false,
+        "fileTypes": [],
+        "file_path": "",
+        "name": "retriever",
+        "display_name": "Retriever",
+        "advanced": false,
+        "dynamic": false,
+        "info": "",
+        "load_from_db": false,
+        "title_case": false
+      },
+      "code": {
+        "type": "code",
+        "required": true,
+        "placeholder": "",
+        "list": false,
+        "show": true,
+        "multiline": true,
+        "value": "from langchain.retrievers import MultiQueryRetriever\n\nfrom langflow.custom import CustomComponent\nfrom langflow.field_typing import BaseRetriever, LanguageModel, PromptTemplate, Text\n\n\nclass MultiQueryRetrieverComponent(CustomComponent):\n    display_name = \"MultiQueryRetriever\"\n    description = \"Initialize from llm using default template.\"\n    documentation = \"https://python.langchain.com/docs/modules/data_connection/retrievers/how_to/MultiQueryRetriever\"\n    name = \"MultiQueryRetriever\"\n    legacy: bool = True\n\n    def build_config(self):\n        return {\n            \"llm\": {\"display_name\": \"LLM\"},\n            \"prompt\": {\n                \"display_name\": \"Prompt\",\n                \"default\": {\n                    \"input_variables\": [\"question\"],\n                    \"input_types\": {},\n                    \"output_parser\": None,\n                    \"partial_variables\": {},\n                    \"template\": \"You are an AI language model assistant. Your task is \\n\"\n                    \"to generate 3 different versions of the given user \\n\"\n                    \"question to retrieve relevant documents from a vector database. \\n\"\n                    \"By generating multiple perspectives on the user question, \\n\"\n                    \"your goal is to help the user overcome some of the limitations \\n\"\n                    \"of distance-based similarity search. Provide these alternative \\n\"\n                    \"questions separated by newlines. Original question: {question}\",\n                    \"template_format\": \"f-string\",\n                    \"validate_template\": False,\n                    \"_type\": \"prompt\",\n                },\n            },\n            \"retriever\": {\"display_name\": \"Retriever\"},\n            \"parser_key\": {\"display_name\": \"Parser Key\", \"default\": \"lines\"},\n        }\n\n    def build(\n        self,\n        llm: LanguageModel,\n        retriever: BaseRetriever,\n        prompt: Text | None = None,\n        parser_key: str = \"lines\",\n    ) -> MultiQueryRetriever:\n        if not prompt:\n            return MultiQueryRetriever.from_llm(llm=llm, retriever=retriever, parser_key=parser_key)\n        prompt_template = PromptTemplate.from_template(prompt)\n        return MultiQueryRetriever.from_llm(llm=llm, retriever=retriever, prompt=prompt_template, parser_key=parser_key)\n",
+        "fileTypes": [],
+        "file_path": "",
+        "password": false,
+        "name": "code",
+        "advanced": true,
+        "dynamic": true,
+        "info": "",
+        "load_from_db": false,
+        "title_case": false
+      },
+      "parser_key": {
+        "type": "str",
+        "required": false,
+        "placeholder": "",
+        "list": false,
+        "show": true,
+        "multiline": false,
+        "value": "lines",
+        "fileTypes": [],
+        "file_path": "",
+        "name": "parser_key",
+        "display_name": "Parser Key",
+        "advanced": false,
+        "dynamic": false,
+        "info": "",
+        "load_from_db": false,
+        "title_case": false,
+        "input_types": [
+          "Text"
+        ]
+      }
+    },
+    "description": "Initialize from llm using default template.",
+    "base_classes": [
+      "BaseRetriever",
+      "Generic",
+      "MultiQueryRetriever",
+      "object",
+      "Runnable",
+      "RunnableSerializable",
+      "RunnableSerializable[str, list[Document]]",
+      "Serializable"
+    ],
+    "display_name": "MultiQueryRetriever",
+    "documentation": "https://python.langchain.com/docs/modules/data_connection/retrievers/how_to/MultiQueryRetriever",
+    "minimized": false,
+    "custom_fields": {
+      "llm": null,
+      "retriever": null,
+      "prompt": null,
+      "parser_key": null
+    },
+    "output_types": [
+      "MultiQueryRetriever"
+    ],
+    "pinned": false,
+    "conditional_paths": [],
+    "frozen": false,
+    "outputs": [
+      {
+        "types": [
+          "MultiQueryRetriever"
+        ],
+        "selected": "MultiQueryRetriever",
+        "name": "multiqueryretriever",
+        "hidden": null,
+        "display_name": "MultiQueryRetriever",
+        "method": null,
+        "value": "__UNDEFINED__",
+        "cache": true,
+        "required_inputs": null,
+        "allows_loop": false,
+        "options": null,
+        "tool_mode": true
+      }
+    ],
+    "field_order": [],
+    "beta": false,
+    "legacy": true,
+    "edited": false,
+    "metadata": {},
+    "tool_mode": false
+  }
+}

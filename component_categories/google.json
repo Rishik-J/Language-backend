@@ -1,0 +1,569 @@
+{
+  "GoogleDriveSearchComponent": {
+    "template": {
+      "_type": "Component",
+      "code": {
+        "type": "code",
+        "required": true,
+        "placeholder": "",
+        "list": false,
+        "show": true,
+        "multiline": true,
+        "value": "import json\n\nfrom google.oauth2.credentials import Credentials\nfrom googleapiclient.discovery import build\n\nfrom langflow.custom import Component\nfrom langflow.inputs import DropdownInput, MessageTextInput\nfrom langflow.io import SecretStrInput\nfrom langflow.schema import Data\nfrom langflow.template import Output\n\n\nclass GoogleDriveSearchComponent(Component):\n    display_name = \"Google Drive Search\"\n    description = \"Searches Google Drive files using provided credentials and query parameters.\"\n    icon = \"Google\"\n\n    inputs = [\n        SecretStrInput(\n            name=\"token_string\",\n            display_name=\"Token String\",\n            info=\"JSON string containing OAuth 2.0 access token information for service account access\",\n            required=True,\n        ),\n        DropdownInput(\n            name=\"query_item\",\n            display_name=\"Query Item\",\n            options=[\n                \"name\",\n                \"fullText\",\n                \"mimeType\",\n                \"modifiedTime\",\n                \"viewedByMeTime\",\n                \"trashed\",\n                \"starred\",\n                \"parents\",\n                \"owners\",\n                \"writers\",\n                \"readers\",\n                \"sharedWithMe\",\n                \"createdTime\",\n                \"properties\",\n                \"appProperties\",\n                \"visibility\",\n                \"shortcutDetails.targetId\",\n            ],\n            info=\"The field to query.\",\n            required=True,\n        ),\n        DropdownInput(\n            name=\"valid_operator\",\n            display_name=\"Valid Operator\",\n            options=[\"contains\", \"=\", \"!=\", \"<=\", \"<\", \">\", \">=\", \"in\", \"has\"],\n            info=\"Operator to use in the query.\",\n            required=True,\n        ),\n        MessageTextInput(\n            name=\"search_term\",\n            display_name=\"Search Term\",\n            info=\"The value to search for in the specified query item.\",\n            required=True,\n        ),\n        MessageTextInput(\n            name=\"query_string\",\n            display_name=\"Query String\",\n            info=\"The query string used for searching. You can edit this manually.\",\n            value=\"\",  # This will be updated with the generated query string\n        ),\n    ]\n\n    outputs = [\n        Output(display_name=\"Document URLs\", name=\"doc_urls\", method=\"search_doc_urls\"),\n        Output(display_name=\"Document IDs\", name=\"doc_ids\", method=\"search_doc_ids\"),\n        Output(display_name=\"Document Titles\", name=\"doc_titles\", method=\"search_doc_titles\"),\n        Output(display_name=\"Data\", name=\"Data\", method=\"search_data\"),\n    ]\n\n    def generate_query_string(self) -> str:\n        query_item = self.query_item\n        valid_operator = self.valid_operator\n        search_term = self.search_term\n\n        # Construct the query string\n        query = f\"{query_item} {valid_operator} '{search_term}'\"\n\n        # Update the editable query string input with the generated query\n        self.query_string = query\n\n        return query\n\n    def on_inputs_changed(self) -> None:\n        # Automatically regenerate the query string when inputs change\n        self.generate_query_string()\n\n    def generate_file_url(self, file_id: str, mime_type: str) -> str:\n        \"\"\"Generates the appropriate Google Drive URL for a file based on its MIME type.\"\"\"\n        return {\n            \"application/vnd.google-apps.document\": f\"https://docs.google.com/document/d/{file_id}/edit\",\n            \"application/vnd.google-apps.spreadsheet\": f\"https://docs.google.com/spreadsheets/d/{file_id}/edit\",\n            \"application/vnd.google-apps.presentation\": f\"https://docs.google.com/presentation/d/{file_id}/edit\",\n            \"application/vnd.google-apps.drawing\": f\"https://docs.google.com/drawings/d/{file_id}/edit\",\n            \"application/pdf\": f\"https://drive.google.com/file/d/{file_id}/view?usp=drivesdk\",\n        }.get(mime_type, f\"https://drive.google.com/file/d/{file_id}/view?usp=drivesdk\")\n\n    def search_files(self) -> dict:\n        # Load the token information from the JSON string\n        token_info = json.loads(self.token_string)\n        creds = Credentials.from_authorized_user_info(token_info)\n\n        # Use the query string from the input (which might have been edited by the user)\n        query = self.query_string or self.generate_query_string()\n\n        # Initialize the Google Drive API service\n        service = build(\"drive\", \"v3\", credentials=creds)\n\n        # Perform the search\n        results = service.files().list(q=query, pageSize=5, fields=\"nextPageToken, files(id, name, mimeType)\").execute()\n        items = results.get(\"files\", [])\n\n        doc_urls = []\n        doc_ids = []\n        doc_titles_urls = []\n        doc_titles = []\n\n        if items:\n            for item in items:\n                # Directly use the file ID, title, and MIME type to generate the URL\n                file_id = item[\"id\"]\n                file_title = item[\"name\"]\n                mime_type = item[\"mimeType\"]\n                file_url = self.generate_file_url(file_id, mime_type)\n\n                # Store the URL, ID, and title+URL in their respective lists\n                doc_urls.append(file_url)\n                doc_ids.append(file_id)\n                doc_titles.append(file_title)\n                doc_titles_urls.append({\"title\": file_title, \"url\": file_url})\n\n        return {\"doc_urls\": doc_urls, \"doc_ids\": doc_ids, \"doc_titles_urls\": doc_titles_urls, \"doc_titles\": doc_titles}\n\n    def search_doc_ids(self) -> list[str]:\n        return self.search_files()[\"doc_ids\"]\n\n    def search_doc_urls(self) -> list[str]:\n        return self.search_files()[\"doc_urls\"]\n\n    def search_doc_titles(self) -> list[str]:\n        return self.search_files()[\"doc_titles\"]\n\n    def search_data(self) -> Data:\n        return Data(data={\"text\": self.search_files()[\"doc_titles_urls\"]})\n",
+        "fileTypes": [],
+        "file_path": "",
+        "password": false,
+        "name": "code",
+        "advanced": true,
+        "dynamic": true,
+        "info": "",
+        "load_from_db": false,
+        "title_case": false
+      },
+      "query_item": {
+        "tool_mode": false,
+        "trace_as_metadata": true,
+        "options": [
+          "name",
+          "fullText",
+          "mimeType",
+          "modifiedTime",
+          "viewedByMeTime",
+          "trashed",
+          "starred",
+          "parents",
+          "owners",
+          "writers",
+          "readers",
+          "sharedWithMe",
+          "createdTime",
+          "properties",
+          "appProperties",
+          "visibility",
+          "shortcutDetails.targetId"
+        ],
+        "options_metadata": [],
+        "combobox": false,
+        "dialog_inputs": {},
+        "toggle": false,
+        "required": true,
+        "placeholder": "",
+        "show": true,
+        "name": "query_item",
+        "value": "",
+        "display_name": "Query Item",
+        "advanced": false,
+        "dynamic": false,
+        "info": "The field to query.",
+        "title_case": false,
+        "type": "str",
+        "_input_type": "DropdownInput"
+      },
+      "query_string": {
+        "tool_mode": false,
+        "trace_as_input": true,
+        "trace_as_metadata": true,
+        "load_from_db": false,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "query_string",
+        "value": "",
+        "display_name": "Query String",
+        "advanced": false,
+        "input_types": [
+          "Message"
+        ],
+        "dynamic": false,
+        "info": "The query string used for searching. You can edit this manually.",
+        "title_case": false,
+        "type": "str",
+        "_input_type": "MessageTextInput"
+      },
+      "search_term": {
+        "tool_mode": false,
+        "trace_as_input": true,
+        "trace_as_metadata": true,
+        "load_from_db": false,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": true,
+        "placeholder": "",
+        "show": true,
+        "name": "search_term",
+        "value": "",
+        "display_name": "Search Term",
+        "advanced": false,
+        "input_types": [
+          "Message"
+        ],
+        "dynamic": false,
+        "info": "The value to search for in the specified query item.",
+        "title_case": false,
+        "type": "str",
+        "_input_type": "MessageTextInput"
+      },
+      "token_string": {
+        "load_from_db": true,
+        "required": true,
+        "placeholder": "",
+        "show": true,
+        "name": "token_string",
+        "value": "",
+        "display_name": "Token String",
+        "advanced": false,
+        "input_types": [],
+        "dynamic": false,
+        "info": "JSON string containing OAuth 2.0 access token information for service account access",
+        "title_case": false,
+        "password": true,
+        "type": "str",
+        "_input_type": "SecretStrInput"
+      },
+      "valid_operator": {
+        "tool_mode": false,
+        "trace_as_metadata": true,
+        "options": [
+          "contains",
+          "=",
+          "!=",
+          "<=",
+          "<",
+          ">",
+          ">=",
+          "in",
+          "has"
+        ],
+        "options_metadata": [],
+        "combobox": false,
+        "dialog_inputs": {},
+        "toggle": false,
+        "required": true,
+        "placeholder": "",
+        "show": true,
+        "name": "valid_operator",
+        "value": "",
+        "display_name": "Valid Operator",
+        "advanced": false,
+        "dynamic": false,
+        "info": "Operator to use in the query.",
+        "title_case": false,
+        "type": "str",
+        "_input_type": "DropdownInput"
+      }
+    },
+    "description": "Searches Google Drive files using provided credentials and query parameters.",
+    "icon": "Google",
+    "base_classes": [
+      "Data",
+      "Text"
+    ],
+    "display_name": "Google Drive Search",
+    "documentation": "",
+    "minimized": false,
+    "custom_fields": {},
+    "output_types": [],
+    "pinned": false,
+    "conditional_paths": [],
+    "frozen": false,
+    "outputs": [
+      {
+        "types": [
+          "Text"
+        ],
+        "selected": "Text",
+        "name": "doc_urls",
+        "display_name": "Document URLs",
+        "method": "search_doc_urls",
+        "value": "__UNDEFINED__",
+        "cache": true,
+        "allows_loop": false,
+        "tool_mode": true
+      },
+      {
+        "types": [
+          "Text"
+        ],
+        "selected": "Text",
+        "name": "doc_ids",
+        "display_name": "Document IDs",
+        "method": "search_doc_ids",
+        "value": "__UNDEFINED__",
+        "cache": true,
+        "allows_loop": false,
+        "tool_mode": true
+      },
+      {
+        "types": [
+          "Text"
+        ],
+        "selected": "Text",
+        "name": "doc_titles",
+        "display_name": "Document Titles",
+        "method": "search_doc_titles",
+        "value": "__UNDEFINED__",
+        "cache": true,
+        "allows_loop": false,
+        "tool_mode": true
+      },
+      {
+        "types": [
+          "Data"
+        ],
+        "selected": "Data",
+        "name": "Data",
+        "display_name": "Data",
+        "method": "search_data",
+        "value": "__UNDEFINED__",
+        "cache": true,
+        "allows_loop": false,
+        "tool_mode": true
+      }
+    ],
+    "field_order": [
+      "token_string",
+      "query_item",
+      "valid_operator",
+      "search_term",
+      "query_string"
+    ],
+    "beta": false,
+    "legacy": false,
+    "edited": false,
+    "metadata": {},
+    "tool_mode": false
+  },
+  "GmailLoaderComponent": {
+    "template": {
+      "_type": "Component",
+      "code": {
+        "type": "code",
+        "required": true,
+        "placeholder": "",
+        "list": false,
+        "show": true,
+        "multiline": true,
+        "value": "import base64\nimport json\nimport re\nfrom collections.abc import Iterator\nfrom json.decoder import JSONDecodeError\nfrom typing import Any\n\nfrom google.auth.exceptions import RefreshError\nfrom google.oauth2.credentials import Credentials\nfrom googleapiclient.discovery import build\nfrom langchain_core.chat_sessions import ChatSession\nfrom langchain_core.messages import HumanMessage\nfrom langchain_google_community.gmail.loader import GMailLoader\nfrom loguru import logger\n\nfrom langflow.custom import Component\nfrom langflow.inputs import MessageTextInput\nfrom langflow.io import SecretStrInput\nfrom langflow.schema import Data\nfrom langflow.template import Output\n\n\nclass GmailLoaderComponent(Component):\n    display_name = \"Gmail Loader\"\n    description = \"Loads emails from Gmail using provided credentials.\"\n    icon = \"Google\"\n\n    inputs = [\n        SecretStrInput(\n            name=\"json_string\",\n            display_name=\"JSON String of the Service Account Token\",\n            info=\"JSON string containing OAuth 2.0 access token information for service account access\",\n            required=True,\n            value=\"\"\"{\n                \"account\": \"\",\n                \"client_id\": \"\",\n                \"client_secret\": \"\",\n                \"expiry\": \"\",\n                \"refresh_token\": \"\",\n                \"scopes\": [\n                    \"https://www.googleapis.com/auth/gmail.readonly\",\n                ],\n                \"token\": \"\",\n                \"token_uri\": \"https://oauth2.googleapis.com/token\",\n                \"universe_domain\": \"googleapis.com\"\n            }\"\"\",\n        ),\n        MessageTextInput(\n            name=\"label_ids\",\n            display_name=\"Label IDs\",\n            info=\"Comma-separated list of label IDs to filter emails.\",\n            required=True,\n            value=\"INBOX,SENT,UNREAD,IMPORTANT\",\n        ),\n        MessageTextInput(\n            name=\"max_results\",\n            display_name=\"Max Results\",\n            info=\"Maximum number of emails to load.\",\n            required=True,\n            value=\"10\",\n        ),\n    ]\n\n    outputs = [\n        Output(display_name=\"Data\", name=\"data\", method=\"load_emails\"),\n    ]\n\n    def load_emails(self) -> Data:\n        class CustomGMailLoader(GMailLoader):\n            def __init__(\n                self, creds: Any, *, n: int = 100, label_ids: list[str] | None = None, raise_error: bool = False\n            ) -> None:\n                super().__init__(creds, n, raise_error)\n                self.label_ids = label_ids if label_ids is not None else [\"SENT\"]\n\n            def clean_message_content(self, message):\n                # Remove URLs\n                message = re.sub(r\"http\\S+|www\\S+|https\\S+\", \"\", message, flags=re.MULTILINE)\n\n                # Remove email addresses\n                message = re.sub(r\"\\S+@\\S+\", \"\", message)\n\n                # Remove special characters and excessive whitespace\n                message = re.sub(r\"[^A-Za-z0-9\\s]+\", \" \", message)\n                message = re.sub(r\"\\s{2,}\", \" \", message)\n\n                # Trim leading and trailing whitespace\n                return message.strip()\n\n            def _extract_email_content(self, msg: Any) -> HumanMessage:\n                from_email = None\n                for values in msg[\"payload\"][\"headers\"]:\n                    name = values[\"name\"]\n                    if name == \"From\":\n                        from_email = values[\"value\"]\n                if from_email is None:\n                    msg = \"From email not found.\"\n                    raise ValueError(msg)\n\n                parts = msg[\"payload\"][\"parts\"] if \"parts\" in msg[\"payload\"] else [msg[\"payload\"]]\n\n                for part in parts:\n                    if part[\"mimeType\"] == \"text/plain\":\n                        data = part[\"body\"][\"data\"]\n                        data = base64.urlsafe_b64decode(data).decode(\"utf-8\")\n                        pattern = re.compile(r\"\\r\\nOn .+(\\r\\n)*wrote:\\r\\n\")\n                        newest_response = re.split(pattern, data)[0]\n                        return HumanMessage(\n                            content=self.clean_message_content(newest_response),\n                            additional_kwargs={\"sender\": from_email},\n                        )\n                msg = \"No plain text part found in the email.\"\n                raise ValueError(msg)\n\n            def _get_message_data(self, service: Any, message: Any) -> ChatSession:\n                msg = service.users().messages().get(userId=\"me\", id=message[\"id\"]).execute()\n                message_content = self._extract_email_content(msg)\n\n                in_reply_to = None\n                email_data = msg[\"payload\"][\"headers\"]\n                for values in email_data:\n                    name = values[\"name\"]\n                    if name == \"In-Reply-To\":\n                        in_reply_to = values[\"value\"]\n\n                thread_id = msg[\"threadId\"]\n\n                if in_reply_to:\n                    thread = service.users().threads().get(userId=\"me\", id=thread_id).execute()\n                    messages = thread[\"messages\"]\n\n                    response_email = None\n                    for _message in messages:\n                        email_data = _message[\"payload\"][\"headers\"]\n                        for values in email_data:\n                            if values[\"name\"] == \"Message-ID\":\n                                message_id = values[\"value\"]\n                                if message_id == in_reply_to:\n                                    response_email = _message\n                    if response_email is None:\n                        msg = \"Response email not found in the thread.\"\n                        raise ValueError(msg)\n                    starter_content = self._extract_email_content(response_email)\n                    return ChatSession(messages=[starter_content, message_content])\n                return ChatSession(messages=[message_content])\n\n            def lazy_load(self) -> Iterator[ChatSession]:\n                service = build(\"gmail\", \"v1\", credentials=self.creds)\n                results = (\n                    service.users().messages().list(userId=\"me\", labelIds=self.label_ids, maxResults=self.n).execute()\n                )\n                messages = results.get(\"messages\", [])\n                if not messages:\n                    logger.warning(\"No messages found with the specified labels.\")\n                for message in messages:\n                    try:\n                        yield self._get_message_data(service, message)\n                    except Exception:\n                        if self.raise_error:\n                            raise\n                        else:\n                            logger.exception(f\"Error processing message {message['id']}\")\n\n        json_string = self.json_string\n        label_ids = self.label_ids.split(\",\") if self.label_ids else [\"INBOX\"]\n        max_results = int(self.max_results) if self.max_results else 100\n\n        # Load the token information from the JSON string\n        try:\n            token_info = json.loads(json_string)\n        except JSONDecodeError as e:\n            msg = \"Invalid JSON string\"\n            raise ValueError(msg) from e\n\n        creds = Credentials.from_authorized_user_info(token_info)\n\n        # Initialize the custom loader with the provided credentials\n        loader = CustomGMailLoader(creds=creds, n=max_results, label_ids=label_ids)\n\n        try:\n            docs = loader.load()\n        except RefreshError as e:\n            msg = \"Authentication error: Unable to refresh authentication token. Please try to reauthenticate.\"\n            raise ValueError(msg) from e\n        except Exception as e:\n            msg = f\"Error loading documents: {e}\"\n            raise ValueError(msg) from e\n\n        # Return the loaded documents\n        self.status = docs\n        return Data(data={\"text\": docs})\n",
+        "fileTypes": [],
+        "file_path": "",
+        "password": false,
+        "name": "code",
+        "advanced": true,
+        "dynamic": true,
+        "info": "",
+        "load_from_db": false,
+        "title_case": false
+      },
+      "json_string": {
+        "load_from_db": true,
+        "required": true,
+        "placeholder": "",
+        "show": true,
+        "name": "json_string",
+        "value": "{\n                \"account\": \"\",\n                \"client_id\": \"\",\n                \"client_secret\": \"\",\n                \"expiry\": \"\",\n                \"refresh_token\": \"\",\n                \"scopes\": [\n                    \"https://www.googleapis.com/auth/gmail.readonly\",\n                ],\n                \"token\": \"\",\n                \"token_uri\": \"https://oauth2.googleapis.com/token\",\n                \"universe_domain\": \"googleapis.com\"\n            }",
+        "display_name": "JSON String of the Service Account Token",
+        "advanced": false,
+        "input_types": [],
+        "dynamic": false,
+        "info": "JSON string containing OAuth 2.0 access token information for service account access",
+        "title_case": false,
+        "password": true,
+        "type": "str",
+        "_input_type": "SecretStrInput"
+      },
+      "label_ids": {
+        "tool_mode": false,
+        "trace_as_input": true,
+        "trace_as_metadata": true,
+        "load_from_db": false,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": true,
+        "placeholder": "",
+        "show": true,
+        "name": "label_ids",
+        "value": "INBOX,SENT,UNREAD,IMPORTANT",
+        "display_name": "Label IDs",
+        "advanced": false,
+        "input_types": [
+          "Message"
+        ],
+        "dynamic": false,
+        "info": "Comma-separated list of label IDs to filter emails.",
+        "title_case": false,
+        "type": "str",
+        "_input_type": "MessageTextInput"
+      },
+      "max_results": {
+        "tool_mode": false,
+        "trace_as_input": true,
+        "trace_as_metadata": true,
+        "load_from_db": false,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": true,
+        "placeholder": "",
+        "show": true,
+        "name": "max_results",
+        "value": "10",
+        "display_name": "Max Results",
+        "advanced": false,
+        "input_types": [
+          "Message"
+        ],
+        "dynamic": false,
+        "info": "Maximum number of emails to load.",
+        "title_case": false,
+        "type": "str",
+        "_input_type": "MessageTextInput"
+      }
+    },
+    "description": "Loads emails from Gmail using provided credentials.",
+    "icon": "Google",
+    "base_classes": [
+      "Data"
+    ],
+    "display_name": "Gmail Loader",
+    "documentation": "",
+    "minimized": false,
+    "custom_fields": {},
+    "output_types": [],
+    "pinned": false,
+    "conditional_paths": [],
+    "frozen": false,
+    "outputs": [
+      {
+        "types": [
+          "Data"
+        ],
+        "selected": "Data",
+        "name": "data",
+        "display_name": "Data",
+        "method": "load_emails",
+        "value": "__UNDEFINED__",
+        "cache": true,
+        "allows_loop": false,
+        "tool_mode": true
+      }
+    ],
+    "field_order": [
+      "json_string",
+      "label_ids",
+      "max_results"
+    ],
+    "beta": false,
+    "legacy": false,
+    "edited": false,
+    "metadata": {},
+    "tool_mode": false
+  },
+  "GoogleOAuthToken": {
+    "template": {
+      "_type": "Component",
+      "oauth_credentials": {
+        "trace_as_metadata": true,
+        "file_path": "",
+        "fileTypes": [
+          "json"
+        ],
+        "temp_file": false,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": true,
+        "placeholder": "",
+        "show": true,
+        "name": "oauth_credentials",
+        "value": "",
+        "display_name": "Credentials File",
+        "advanced": false,
+        "dynamic": false,
+        "info": "Input OAuth Credentials file (e.g. credentials.json).",
+        "title_case": false,
+        "type": "file",
+        "_input_type": "FileInput"
+      },
+      "code": {
+        "type": "code",
+        "required": true,
+        "placeholder": "",
+        "list": false,
+        "show": true,
+        "multiline": true,
+        "value": "import json\nimport re\nfrom pathlib import Path\n\nfrom google.auth.transport.requests import Request\nfrom google.oauth2.credentials import Credentials\nfrom google_auth_oauthlib.flow import InstalledAppFlow\n\nfrom langflow.custom import Component\nfrom langflow.io import FileInput, MultilineInput, Output\nfrom langflow.schema import Data\n\n\nclass GoogleOAuthToken(Component):\n    display_name = \"Google OAuth Token\"\n    description = \"Generates a JSON string with your Google OAuth token.\"\n    documentation: str = \"https://developers.google.com/identity/protocols/oauth2/web-server?hl=pt-br#python_1\"\n    icon = \"Google\"\n    name = \"GoogleOAuthToken\"\n\n    inputs = [\n        MultilineInput(\n            name=\"scopes\",\n            display_name=\"Scopes\",\n            info=\"Input scopes for your application.\",\n            required=True,\n        ),\n        FileInput(\n            name=\"oauth_credentials\",\n            display_name=\"Credentials File\",\n            info=\"Input OAuth Credentials file (e.g. credentials.json).\",\n            file_types=[\"json\"],\n            required=True,\n        ),\n    ]\n\n    outputs = [\n        Output(display_name=\"Output\", name=\"output\", method=\"build_output\"),\n    ]\n\n    def validate_scopes(self, scopes):\n        pattern = (\n            r\"^(https://www\\.googleapis\\.com/auth/[\\w\\.\\-]+\"\n            r\"|mail\\.google\\.com/\"\n            r\"|www\\.google\\.com/calendar/feeds\"\n            r\"|www\\.google\\.com/m8/feeds)\"\n            r\"(,\\s*https://www\\.googleapis\\.com/auth/[\\w\\.\\-]+\"\n            r\"|mail\\.google\\.com/\"\n            r\"|www\\.google\\.com/calendar/feeds\"\n            r\"|www\\.google\\.com/m8/feeds)*$\"\n        )\n        if not re.match(pattern, scopes):\n            error_message = \"Invalid scope format.\"\n            raise ValueError(error_message)\n\n    def build_output(self) -> Data:\n        self.validate_scopes(self.scopes)\n\n        user_scopes = [scope.strip() for scope in self.scopes.split(\",\")]\n        if self.scopes:\n            scopes = user_scopes\n        else:\n            error_message = \"Incorrect scope, check the scopes field.\"\n            raise ValueError(error_message)\n\n        creds = None\n        token_path = Path(\"token.json\")\n\n        if token_path.exists():\n            creds = Credentials.from_authorized_user_file(str(token_path), scopes)\n\n        if not creds or not creds.valid:\n            if creds and creds.expired and creds.refresh_token:\n                creds.refresh(Request())\n            else:\n                if self.oauth_credentials:\n                    client_secret_file = self.oauth_credentials\n                else:\n                    error_message = \"OAuth 2.0 Credentials file not provided.\"\n                    raise ValueError(error_message)\n\n                flow = InstalledAppFlow.from_client_secrets_file(client_secret_file, scopes)\n                creds = flow.run_local_server(port=0)\n\n                token_path.write_text(creds.to_json(), encoding=\"utf-8\")\n\n        creds_json = json.loads(creds.to_json())\n\n        return Data(data=creds_json)\n",
+        "fileTypes": [],
+        "file_path": "",
+        "password": false,
+        "name": "code",
+        "advanced": true,
+        "dynamic": true,
+        "info": "",
+        "load_from_db": false,
+        "title_case": false
+      },
+      "scopes": {
+        "tool_mode": false,
+        "trace_as_input": true,
+        "multiline": true,
+        "trace_as_metadata": true,
+        "load_from_db": false,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": true,
+        "placeholder": "",
+        "show": true,
+        "name": "scopes",
+        "value": "",
+        "display_name": "Scopes",
+        "advanced": false,
+        "input_types": [
+          "Message"
+        ],
+        "dynamic": false,
+        "info": "Input scopes for your application.",
+        "title_case": false,
+        "copy_field": false,
+        "type": "str",
+        "_input_type": "MultilineInput"
+      }
+    },
+    "description": "Generates a JSON string with your Google OAuth token.",
+    "icon": "Google",
+    "base_classes": [
+      "Data"
+    ],
+    "display_name": "Google OAuth Token",
+    "documentation": "https://developers.google.com/identity/protocols/oauth2/web-server?hl=pt-br#python_1",
+    "minimized": false,
+    "custom_fields": {},
+    "output_types": [],
+    "pinned": false,
+    "conditional_paths": [],
+    "frozen": false,
+    "outputs": [
+      {
+        "types": [
+          "Data"
+        ],
+        "selected": "Data",
+        "name": "output",
+        "display_name": "Output",
+        "method": "build_output",
+        "value": "__UNDEFINED__",
+        "cache": true,
+        "allows_loop": false,
+        "tool_mode": true
+      }
+    ],
+    "field_order": [
+      "scopes",
+      "oauth_credentials"
+    ],
+    "beta": false,
+    "legacy": false,
+    "edited": false,
+    "metadata": {},
+    "tool_mode": false
+  },
+  "GoogleDriveComponent": {
+    "template": {
+      "_type": "Component",
+      "code": {
+        "type": "code",
+        "required": true,
+        "placeholder": "",
+        "list": false,
+        "show": true,
+        "multiline": true,
+        "value": "import json\nfrom json.decoder import JSONDecodeError\n\nfrom google.auth.exceptions import RefreshError\nfrom google.oauth2.credentials import Credentials\nfrom langchain_google_community import GoogleDriveLoader\n\nfrom langflow.custom import Component\nfrom langflow.helpers.data import docs_to_data\nfrom langflow.inputs import MessageTextInput\nfrom langflow.io import SecretStrInput\nfrom langflow.schema import Data\nfrom langflow.template import Output\n\n\nclass GoogleDriveComponent(Component):\n    display_name = \"Google Drive Loader\"\n    description = \"Loads documents from Google Drive using provided credentials.\"\n    icon = \"Google\"\n\n    inputs = [\n        SecretStrInput(\n            name=\"json_string\",\n            display_name=\"JSON String of the Service Account Token\",\n            info=\"JSON string containing OAuth 2.0 access token information for service account access\",\n            required=True,\n        ),\n        MessageTextInput(\n            name=\"document_id\", display_name=\"Document ID\", info=\"Single Google Drive document ID\", required=True\n        ),\n    ]\n\n    outputs = [\n        Output(display_name=\"Loaded Documents\", name=\"docs\", method=\"load_documents\"),\n    ]\n\n    def load_documents(self) -> Data:\n        class CustomGoogleDriveLoader(GoogleDriveLoader):\n            creds: Credentials | None = None\n            \"\"\"Credentials object to be passed directly.\"\"\"\n\n            def _load_credentials(self):\n                \"\"\"Load credentials from the provided creds attribute or fallback to the original method.\"\"\"\n                if self.creds:\n                    return self.creds\n                msg = \"No credentials provided.\"\n                raise ValueError(msg)\n\n            class Config:\n                arbitrary_types_allowed = True\n\n        json_string = self.json_string\n\n        document_ids = [self.document_id]\n        if len(document_ids) != 1:\n            msg = \"Expected a single document ID\"\n            raise ValueError(msg)\n\n        # TODO: Add validation to check if the document ID is valid\n\n        # Load the token information from the JSON string\n        try:\n            token_info = json.loads(json_string)\n        except JSONDecodeError as e:\n            msg = \"Invalid JSON string\"\n            raise ValueError(msg) from e\n\n        # Initialize the custom loader with the provided credentials and document IDs\n        loader = CustomGoogleDriveLoader(\n            creds=Credentials.from_authorized_user_info(token_info), document_ids=document_ids\n        )\n\n        # Load the documents\n        try:\n            docs = loader.load()\n        # catch google.auth.exceptions.RefreshError\n        except RefreshError as e:\n            msg = \"Authentication error: Unable to refresh authentication token. Please try to reauthenticate.\"\n            raise ValueError(msg) from e\n        except Exception as e:\n            msg = f\"Error loading documents: {e}\"\n            raise ValueError(msg) from e\n\n        if len(docs) != 1:\n            msg = \"Expected a single document to be loaded.\"\n            raise ValueError(msg)\n\n        data = docs_to_data(docs)\n        # Return the loaded documents\n        self.status = data\n        return Data(data={\"text\": data})\n",
+        "fileTypes": [],
+        "file_path": "",
+        "password": false,
+        "name": "code",
+        "advanced": true,
+        "dynamic": true,
+        "info": "",
+        "load_from_db": false,
+        "title_case": false
+      },
+      "document_id": {
+        "tool_mode": false,
+        "trace_as_input": true,
+        "trace_as_metadata": true,
+        "load_from_db": false,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": true,
+        "placeholder": "",
+        "show": true,
+        "name": "document_id",
+        "value": "",
+        "display_name": "Document ID",
+        "advanced": false,
+        "input_types": [
+          "Message"
+        ],
+        "dynamic": false,
+        "info": "Single Google Drive document ID",
+        "title_case": false,
+        "type": "str",
+        "_input_type": "MessageTextInput"
+      },
+      "json_string": {
+        "load_from_db": true,
+        "required": true,
+        "placeholder": "",
+        "show": true,
+        "name": "json_string",
+        "value": "",
+        "display_name": "JSON String of the Service Account Token",
+        "advanced": false,
+        "input_types": [],
+        "dynamic": false,
+        "info": "JSON string containing OAuth 2.0 access token information for service account access",
+        "title_case": false,
+        "password": true,
+        "type": "str",
+        "_input_type": "SecretStrInput"
+      }
+    },
+    "description": "Loads documents from Google Drive using provided credentials.",
+    "icon": "Google",
+    "base_classes": [
+      "Data"
+    ],
+    "display_name": "Google Drive Loader",
+    "documentation": "",
+    "minimized": false,
+    "custom_fields": {},
+    "output_types": [],
+    "pinned": false,
+    "conditional_paths": [],
+    "frozen": false,
+    "outputs": [
+      {
+        "types": [
+          "Data"
+        ],
+        "selected": "Data",
+        "name": "docs",
+        "display_name": "Loaded Documents",
+        "method": "load_documents",
+        "value": "__UNDEFINED__",
+        "cache": true,
+        "allows_loop": false,
+        "tool_mode": true
+      }
+    ],
+    "field_order": [
+      "json_string",
+      "document_id"
+    ],
+    "beta": false,
+    "legacy": false,
+    "edited": false,
+    "metadata": {},
+    "tool_mode": false
+  }
+}

@@ -1,0 +1,1064 @@
+{
+  "NotionPageContent": {
+    "template": {
+      "_type": "Component",
+      "code": {
+        "type": "code",
+        "required": true,
+        "placeholder": "",
+        "list": false,
+        "show": true,
+        "multiline": true,
+        "value": "import requests\nfrom langchain.tools import StructuredTool\nfrom loguru import logger\nfrom pydantic import BaseModel, Field\n\nfrom langflow.base.langchain_utilities.model import LCToolComponent\nfrom langflow.field_typing import Tool\nfrom langflow.inputs import SecretStrInput, StrInput\nfrom langflow.schema import Data\n\n\nclass NotionPageContent(LCToolComponent):\n    display_name = \"Page Content Viewer \"\n    description = \"Retrieve the content of a Notion page as plain text.\"\n    documentation = \"https://docs.langflow.org/integrations/notion/page-content-viewer\"\n    icon = \"NotionDirectoryLoader\"\n\n    inputs = [\n        StrInput(\n            name=\"page_id\",\n            display_name=\"Page ID\",\n            info=\"The ID of the Notion page to retrieve.\",\n        ),\n        SecretStrInput(\n            name=\"notion_secret\",\n            display_name=\"Notion Secret\",\n            info=\"The Notion integration token.\",\n            required=True,\n        ),\n    ]\n\n    class NotionPageContentSchema(BaseModel):\n        page_id: str = Field(..., description=\"The ID of the Notion page to retrieve.\")\n\n    def run_model(self) -> Data:\n        result = self._retrieve_page_content(self.page_id)\n        if isinstance(result, str) and result.startswith(\"Error:\"):\n            # An error occurred, return it as text\n            return Data(text=result)\n        # Success, return the content\n        return Data(text=result, data={\"content\": result})\n\n    def build_tool(self) -> Tool:\n        return StructuredTool.from_function(\n            name=\"notion_page_content\",\n            description=\"Retrieve the content of a Notion page as plain text.\",\n            func=self._retrieve_page_content,\n            args_schema=self.NotionPageContentSchema,\n        )\n\n    def _retrieve_page_content(self, page_id: str) -> str:\n        blocks_url = f\"https://api.notion.com/v1/blocks/{page_id}/children?page_size=100\"\n        headers = {\n            \"Authorization\": f\"Bearer {self.notion_secret}\",\n            \"Notion-Version\": \"2022-06-28\",\n        }\n        try:\n            blocks_response = requests.get(blocks_url, headers=headers, timeout=10)\n            blocks_response.raise_for_status()\n            blocks_data = blocks_response.json()\n            return self.parse_blocks(blocks_data.get(\"results\", []))\n        except requests.exceptions.RequestException as e:\n            error_message = f\"Error: Failed to retrieve Notion page content. {e}\"\n            if hasattr(e, \"response\") and e.response is not None:\n                error_message += f\" Status code: {e.response.status_code}, Response: {e.response.text}\"\n            return error_message\n        except Exception as e:  # noqa: BLE001\n            logger.opt(exception=True).debug(\"Error retrieving Notion page content\")\n            return f\"Error: An unexpected error occurred while retrieving Notion page content. {e}\"\n\n    def parse_blocks(self, blocks: list) -> str:\n        content = \"\"\n        for block in blocks:\n            block_type = block.get(\"type\")\n            if block_type in {\"paragraph\", \"heading_1\", \"heading_2\", \"heading_3\", \"quote\"}:\n                content += self.parse_rich_text(block[block_type].get(\"rich_text\", [])) + \"\\n\\n\"\n            elif block_type in {\"bulleted_list_item\", \"numbered_list_item\"}:\n                content += self.parse_rich_text(block[block_type].get(\"rich_text\", [])) + \"\\n\"\n            elif block_type == \"to_do\":\n                content += self.parse_rich_text(block[\"to_do\"].get(\"rich_text\", [])) + \"\\n\"\n            elif block_type == \"code\":\n                content += self.parse_rich_text(block[\"code\"].get(\"rich_text\", [])) + \"\\n\\n\"\n            elif block_type == \"image\":\n                content += f\"[Image: {block['image'].get('external', {}).get('url', 'No URL')}]\\n\\n\"\n            elif block_type == \"divider\":\n                content += \"---\\n\\n\"\n        return content.strip()\n\n    def parse_rich_text(self, rich_text: list) -> str:\n        return \"\".join(segment.get(\"plain_text\", \"\") for segment in rich_text)\n\n    def __call__(self, *args, **kwargs):\n        return self._retrieve_page_content(*args, **kwargs)\n",
+        "fileTypes": [],
+        "file_path": "",
+        "password": false,
+        "name": "code",
+        "advanced": true,
+        "dynamic": true,
+        "info": "",
+        "load_from_db": false,
+        "title_case": false
+      },
+      "notion_secret": {
+        "load_from_db": true,
+        "required": true,
+        "placeholder": "",
+        "show": true,
+        "name": "notion_secret",
+        "value": "",
+        "display_name": "Notion Secret",
+        "advanced": false,
+        "input_types": [],
+        "dynamic": false,
+        "info": "The Notion integration token.",
+        "title_case": false,
+        "password": true,
+        "type": "str",
+        "_input_type": "SecretStrInput"
+      },
+      "page_id": {
+        "tool_mode": false,
+        "trace_as_metadata": true,
+        "load_from_db": false,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "page_id",
+        "value": "",
+        "display_name": "Page ID",
+        "advanced": false,
+        "dynamic": false,
+        "info": "The ID of the Notion page to retrieve.",
+        "title_case": false,
+        "type": "str",
+        "_input_type": "StrInput"
+      }
+    },
+    "description": "Retrieve the content of a Notion page as plain text.",
+    "icon": "NotionDirectoryLoader",
+    "base_classes": [
+      "Data",
+      "Tool"
+    ],
+    "display_name": "Page Content Viewer ",
+    "documentation": "https://docs.langflow.org/integrations/notion/page-content-viewer",
+    "minimized": false,
+    "custom_fields": {},
+    "output_types": [],
+    "pinned": false,
+    "conditional_paths": [],
+    "frozen": false,
+    "outputs": [
+      {
+        "types": [
+          "Data"
+        ],
+        "selected": "Data",
+        "name": "api_run_model",
+        "display_name": "Data",
+        "method": "run_model",
+        "value": "__UNDEFINED__",
+        "cache": true,
+        "required_inputs": [
+          "notion_secret"
+        ],
+        "allows_loop": false,
+        "tool_mode": true
+      },
+      {
+        "types": [
+          "Tool"
+        ],
+        "selected": "Tool",
+        "name": "api_build_tool",
+        "display_name": "Tool",
+        "method": "build_tool",
+        "value": "__UNDEFINED__",
+        "cache": true,
+        "required_inputs": [
+          "notion_secret"
+        ],
+        "allows_loop": false,
+        "tool_mode": true
+      }
+    ],
+    "field_order": [
+      "page_id",
+      "notion_secret"
+    ],
+    "beta": false,
+    "legacy": false,
+    "edited": false,
+    "metadata": {},
+    "tool_mode": false
+  },
+  "NotionPageUpdate": {
+    "template": {
+      "_type": "Component",
+      "code": {
+        "type": "code",
+        "required": true,
+        "placeholder": "",
+        "list": false,
+        "show": true,
+        "multiline": true,
+        "value": "import json\nfrom typing import Any\n\nimport requests\nfrom langchain.tools import StructuredTool\nfrom loguru import logger\nfrom pydantic import BaseModel, Field\n\nfrom langflow.base.langchain_utilities.model import LCToolComponent\nfrom langflow.field_typing import Tool\nfrom langflow.inputs import MultilineInput, SecretStrInput, StrInput\nfrom langflow.schema import Data\n\n\nclass NotionPageUpdate(LCToolComponent):\n    display_name: str = \"Update Page Property \"\n    description: str = \"Update the properties of a Notion page.\"\n    documentation: str = \"https://docs.langflow.org/integrations/notion/page-update\"\n    icon = \"NotionDirectoryLoader\"\n\n    inputs = [\n        StrInput(\n            name=\"page_id\",\n            display_name=\"Page ID\",\n            info=\"The ID of the Notion page to update.\",\n        ),\n        MultilineInput(\n            name=\"properties\",\n            display_name=\"Properties\",\n            info=\"The properties to update on the page (as a JSON string or a dictionary).\",\n        ),\n        SecretStrInput(\n            name=\"notion_secret\",\n            display_name=\"Notion Secret\",\n            info=\"The Notion integration token.\",\n            required=True,\n        ),\n    ]\n\n    class NotionPageUpdateSchema(BaseModel):\n        page_id: str = Field(..., description=\"The ID of the Notion page to update.\")\n        properties: str | dict[str, Any] = Field(\n            ..., description=\"The properties to update on the page (as a JSON string or a dictionary).\"\n        )\n\n    def run_model(self) -> Data:\n        result = self._update_notion_page(self.page_id, self.properties)\n        if isinstance(result, str):\n            # An error occurred, return it as text\n            return Data(text=result)\n        # Success, return the updated page data\n        output = \"Updated page properties:\\n\"\n        for prop_name, prop_value in result.get(\"properties\", {}).items():\n            output += f\"{prop_name}: {prop_value}\\n\"\n        return Data(text=output, data=result)\n\n    def build_tool(self) -> Tool:\n        return StructuredTool.from_function(\n            name=\"update_notion_page\",\n            description=\"Update the properties of a Notion page. \"\n            \"IMPORTANT: Use the tool to check the Database properties for more details before using this tool.\",\n            func=self._update_notion_page,\n            args_schema=self.NotionPageUpdateSchema,\n        )\n\n    def _update_notion_page(self, page_id: str, properties: str | dict[str, Any]) -> dict[str, Any] | str:\n        url = f\"https://api.notion.com/v1/pages/{page_id}\"\n        headers = {\n            \"Authorization\": f\"Bearer {self.notion_secret}\",\n            \"Content-Type\": \"application/json\",\n            \"Notion-Version\": \"2022-06-28\",  # Use the latest supported version\n        }\n\n        # Parse properties if it's a string\n        if isinstance(properties, str):\n            try:\n                parsed_properties = json.loads(properties)\n            except json.JSONDecodeError as e:\n                error_message = f\"Invalid JSON format for properties: {e}\"\n                logger.exception(error_message)\n                return error_message\n\n        else:\n            parsed_properties = properties\n\n        data = {\"properties\": parsed_properties}\n\n        try:\n            logger.info(f\"Sending request to Notion API: URL: {url}, Data: {json.dumps(data)}\")\n            response = requests.patch(url, headers=headers, json=data, timeout=10)\n            response.raise_for_status()\n            updated_page = response.json()\n\n            logger.info(f\"Successfully updated Notion page. Response: {json.dumps(updated_page)}\")\n        except requests.exceptions.HTTPError as e:\n            error_message = f\"HTTP Error occurred: {e}\"\n            if e.response is not None:\n                error_message += f\"\\nStatus code: {e.response.status_code}\"\n                error_message += f\"\\nResponse body: {e.response.text}\"\n            logger.exception(error_message)\n            return error_message\n        except requests.exceptions.RequestException as e:\n            error_message = f\"An error occurred while making the request: {e}\"\n            logger.exception(error_message)\n            return error_message\n        except Exception as e:  # noqa: BLE001\n            error_message = f\"An unexpected error occurred: {e}\"\n            logger.exception(error_message)\n            return error_message\n\n        return updated_page\n\n    def __call__(self, *args, **kwargs):\n        return self._update_notion_page(*args, **kwargs)\n",
+        "fileTypes": [],
+        "file_path": "",
+        "password": false,
+        "name": "code",
+        "advanced": true,
+        "dynamic": true,
+        "info": "",
+        "load_from_db": false,
+        "title_case": false
+      },
+      "notion_secret": {
+        "load_from_db": true,
+        "required": true,
+        "placeholder": "",
+        "show": true,
+        "name": "notion_secret",
+        "value": "",
+        "display_name": "Notion Secret",
+        "advanced": false,
+        "input_types": [],
+        "dynamic": false,
+        "info": "The Notion integration token.",
+        "title_case": false,
+        "password": true,
+        "type": "str",
+        "_input_type": "SecretStrInput"
+      },
+      "page_id": {
+        "tool_mode": false,
+        "trace_as_metadata": true,
+        "load_from_db": false,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "page_id",
+        "value": "",
+        "display_name": "Page ID",
+        "advanced": false,
+        "dynamic": false,
+        "info": "The ID of the Notion page to update.",
+        "title_case": false,
+        "type": "str",
+        "_input_type": "StrInput"
+      },
+      "properties": {
+        "tool_mode": false,
+        "trace_as_input": true,
+        "multiline": true,
+        "trace_as_metadata": true,
+        "load_from_db": false,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "properties",
+        "value": "",
+        "display_name": "Properties",
+        "advanced": false,
+        "input_types": [
+          "Message"
+        ],
+        "dynamic": false,
+        "info": "The properties to update on the page (as a JSON string or a dictionary).",
+        "title_case": false,
+        "copy_field": false,
+        "type": "str",
+        "_input_type": "MultilineInput"
+      }
+    },
+    "description": "Update the properties of a Notion page.",
+    "icon": "NotionDirectoryLoader",
+    "base_classes": [
+      "Data",
+      "Tool"
+    ],
+    "display_name": "Update Page Property ",
+    "documentation": "https://docs.langflow.org/integrations/notion/page-update",
+    "minimized": false,
+    "custom_fields": {},
+    "output_types": [],
+    "pinned": false,
+    "conditional_paths": [],
+    "frozen": false,
+    "outputs": [
+      {
+        "types": [
+          "Data"
+        ],
+        "selected": "Data",
+        "name": "api_run_model",
+        "display_name": "Data",
+        "method": "run_model",
+        "value": "__UNDEFINED__",
+        "cache": true,
+        "required_inputs": [
+          "notion_secret"
+        ],
+        "allows_loop": false,
+        "tool_mode": true
+      },
+      {
+        "types": [
+          "Tool"
+        ],
+        "selected": "Tool",
+        "name": "api_build_tool",
+        "display_name": "Tool",
+        "method": "build_tool",
+        "value": "__UNDEFINED__",
+        "cache": true,
+        "required_inputs": [
+          "notion_secret"
+        ],
+        "allows_loop": false,
+        "tool_mode": true
+      }
+    ],
+    "field_order": [
+      "page_id",
+      "properties",
+      "notion_secret"
+    ],
+    "beta": false,
+    "legacy": false,
+    "edited": false,
+    "metadata": {},
+    "tool_mode": false
+  },
+  "AddContentToPage": {
+    "template": {
+      "_type": "Component",
+      "block_id": {
+        "tool_mode": false,
+        "trace_as_metadata": true,
+        "load_from_db": false,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "block_id",
+        "value": "",
+        "display_name": "Page/Block ID",
+        "advanced": false,
+        "dynamic": false,
+        "info": "The ID of the page/block to add the content.",
+        "title_case": false,
+        "type": "str",
+        "_input_type": "StrInput"
+      },
+      "code": {
+        "type": "code",
+        "required": true,
+        "placeholder": "",
+        "list": false,
+        "show": true,
+        "multiline": true,
+        "value": "import json\nfrom typing import Any\n\nimport requests\nfrom bs4 import BeautifulSoup\nfrom langchain.tools import StructuredTool\nfrom loguru import logger\nfrom markdown import markdown\nfrom pydantic import BaseModel, Field\n\nfrom langflow.base.langchain_utilities.model import LCToolComponent\nfrom langflow.field_typing import Tool\nfrom langflow.inputs import MultilineInput, SecretStrInput, StrInput\nfrom langflow.schema import Data\n\nMIN_ROWS_IN_TABLE = 3\n\n\nclass AddContentToPage(LCToolComponent):\n    display_name: str = \"Add Content to Page \"\n    description: str = \"Convert markdown text to Notion blocks and append them to a Notion page.\"\n    documentation: str = \"https://developers.notion.com/reference/patch-block-children\"\n    icon = \"NotionDirectoryLoader\"\n\n    inputs = [\n        MultilineInput(\n            name=\"markdown_text\",\n            display_name=\"Markdown Text\",\n            info=\"The markdown text to convert to Notion blocks.\",\n        ),\n        StrInput(\n            name=\"block_id\",\n            display_name=\"Page/Block ID\",\n            info=\"The ID of the page/block to add the content.\",\n        ),\n        SecretStrInput(\n            name=\"notion_secret\",\n            display_name=\"Notion Secret\",\n            info=\"The Notion integration token.\",\n            required=True,\n        ),\n    ]\n\n    class AddContentToPageSchema(BaseModel):\n        markdown_text: str = Field(..., description=\"The markdown text to convert to Notion blocks.\")\n        block_id: str = Field(..., description=\"The ID of the page/block to add the content.\")\n\n    def run_model(self) -> Data:\n        result = self._add_content_to_page(self.markdown_text, self.block_id)\n        return Data(data=result, text=json.dumps(result))\n\n    def build_tool(self) -> Tool:\n        return StructuredTool.from_function(\n            name=\"add_content_to_notion_page\",\n            description=\"Convert markdown text to Notion blocks and append them to a Notion page.\",\n            func=self._add_content_to_page,\n            args_schema=self.AddContentToPageSchema,\n        )\n\n    def _add_content_to_page(self, markdown_text: str, block_id: str) -> dict[str, Any] | str:\n        try:\n            html_text = markdown(markdown_text)\n            soup = BeautifulSoup(html_text, \"html.parser\")\n            blocks = self.process_node(soup)\n\n            url = f\"https://api.notion.com/v1/blocks/{block_id}/children\"\n            headers = {\n                \"Authorization\": f\"Bearer {self.notion_secret}\",\n                \"Content-Type\": \"application/json\",\n                \"Notion-Version\": \"2022-06-28\",\n            }\n\n            data = {\n                \"children\": blocks,\n            }\n\n            response = requests.patch(url, headers=headers, json=data, timeout=10)\n            response.raise_for_status()\n\n            return response.json()\n        except requests.exceptions.RequestException as e:\n            error_message = f\"Error: Failed to add content to Notion page. {e}\"\n            if hasattr(e, \"response\") and e.response is not None:\n                error_message += f\" Status code: {e.response.status_code}, Response: {e.response.text}\"\n            return error_message\n        except Exception as e:  # noqa: BLE001\n            logger.opt(exception=True).debug(\"Error adding content to Notion page\")\n            return f\"Error: An unexpected error occurred while adding content to Notion page. {e}\"\n\n    def process_node(self, node):\n        blocks = []\n        if isinstance(node, str):\n            text = node.strip()\n            if text:\n                if text.startswith(\"#\"):\n                    heading_level = text.count(\"#\", 0, 6)\n                    heading_text = text[heading_level:].strip()\n                    if heading_level in range(3):\n                        blocks.append(self.create_block(f\"heading_{heading_level + 1}\", heading_text))\n                else:\n                    blocks.append(self.create_block(\"paragraph\", text))\n        elif node.name == \"h1\":\n            blocks.append(self.create_block(\"heading_1\", node.get_text(strip=True)))\n        elif node.name == \"h2\":\n            blocks.append(self.create_block(\"heading_2\", node.get_text(strip=True)))\n        elif node.name == \"h3\":\n            blocks.append(self.create_block(\"heading_3\", node.get_text(strip=True)))\n        elif node.name == \"p\":\n            code_node = node.find(\"code\")\n            if code_node:\n                code_text = code_node.get_text()\n                language, code = self.extract_language_and_code(code_text)\n                blocks.append(self.create_block(\"code\", code, language=language))\n            elif self.is_table(str(node)):\n                blocks.extend(self.process_table(node))\n            else:\n                blocks.append(self.create_block(\"paragraph\", node.get_text(strip=True)))\n        elif node.name == \"ul\":\n            blocks.extend(self.process_list(node, \"bulleted_list_item\"))\n        elif node.name == \"ol\":\n            blocks.extend(self.process_list(node, \"numbered_list_item\"))\n        elif node.name == \"blockquote\":\n            blocks.append(self.create_block(\"quote\", node.get_text(strip=True)))\n        elif node.name == \"hr\":\n            blocks.append(self.create_block(\"divider\", \"\"))\n        elif node.name == \"img\":\n            blocks.append(self.create_block(\"image\", \"\", image_url=node.get(\"src\")))\n        elif node.name == \"a\":\n            blocks.append(self.create_block(\"bookmark\", node.get_text(strip=True), link_url=node.get(\"href\")))\n        elif node.name == \"table\":\n            blocks.extend(self.process_table(node))\n\n        for child in node.children:\n            if isinstance(child, str):\n                continue\n            blocks.extend(self.process_node(child))\n\n        return blocks\n\n    def extract_language_and_code(self, code_text):\n        lines = code_text.split(\"\\n\")\n        language = lines[0].strip()\n        code = \"\\n\".join(lines[1:]).strip()\n        return language, code\n\n    def is_code_block(self, text):\n        return text.startswith(\"```\")\n\n    def extract_code_block(self, text):\n        lines = text.split(\"\\n\")\n        language = lines[0].strip(\"`\").strip()\n        code = \"\\n\".join(lines[1:]).strip(\"`\").strip()\n        return language, code\n\n    def is_table(self, text):\n        rows = text.split(\"\\n\")\n        if len(rows) < MIN_ROWS_IN_TABLE:\n            return False\n\n        has_separator = False\n        for i, row in enumerate(rows):\n            if \"|\" in row:\n                cells = [cell.strip() for cell in row.split(\"|\")]\n                cells = [cell for cell in cells if cell]  # Remove empty cells\n                if i == 1 and all(set(cell) <= set(\"-|\") for cell in cells):\n                    has_separator = True\n                elif not cells:\n                    return False\n\n        return has_separator\n\n    def process_list(self, node, list_type):\n        blocks = []\n        for item in node.find_all(\"li\"):\n            item_text = item.get_text(strip=True)\n            checked = item_text.startswith(\"[x]\")\n            is_checklist = item_text.startswith(\"[ ]\") or checked\n\n            if is_checklist:\n                item_text = item_text.replace(\"[x]\", \"\").replace(\"[ ]\", \"\").strip()\n                blocks.append(self.create_block(\"to_do\", item_text, checked=checked))\n            else:\n                blocks.append(self.create_block(list_type, item_text))\n        return blocks\n\n    def process_table(self, node):\n        blocks = []\n        header_row = node.find(\"thead\").find(\"tr\") if node.find(\"thead\") else None\n        body_rows = node.find(\"tbody\").find_all(\"tr\") if node.find(\"tbody\") else []\n\n        if header_row or body_rows:\n            table_width = max(\n                len(header_row.find_all([\"th\", \"td\"])) if header_row else 0,\n                *(len(row.find_all([\"th\", \"td\"])) for row in body_rows),\n            )\n\n            table_block = self.create_block(\"table\", \"\", table_width=table_width, has_column_header=bool(header_row))\n            blocks.append(table_block)\n\n            if header_row:\n                header_cells = [cell.get_text(strip=True) for cell in header_row.find_all([\"th\", \"td\"])]\n                header_row_block = self.create_block(\"table_row\", header_cells)\n                blocks.append(header_row_block)\n\n            for row in body_rows:\n                cells = [cell.get_text(strip=True) for cell in row.find_all([\"th\", \"td\"])]\n                row_block = self.create_block(\"table_row\", cells)\n                blocks.append(row_block)\n\n        return blocks\n\n    def create_block(self, block_type: str, content: str, **kwargs) -> dict[str, Any]:\n        block: dict[str, Any] = {\n            \"object\": \"block\",\n            \"type\": block_type,\n            block_type: {},\n        }\n\n        if block_type in {\n            \"paragraph\",\n            \"heading_1\",\n            \"heading_2\",\n            \"heading_3\",\n            \"bulleted_list_item\",\n            \"numbered_list_item\",\n            \"quote\",\n        }:\n            block[block_type][\"rich_text\"] = [\n                {\n                    \"type\": \"text\",\n                    \"text\": {\n                        \"content\": content,\n                    },\n                }\n            ]\n        elif block_type == \"to_do\":\n            block[block_type][\"rich_text\"] = [\n                {\n                    \"type\": \"text\",\n                    \"text\": {\n                        \"content\": content,\n                    },\n                }\n            ]\n            block[block_type][\"checked\"] = kwargs.get(\"checked\", False)\n        elif block_type == \"code\":\n            block[block_type][\"rich_text\"] = [\n                {\n                    \"type\": \"text\",\n                    \"text\": {\n                        \"content\": content,\n                    },\n                }\n            ]\n            block[block_type][\"language\"] = kwargs.get(\"language\", \"plain text\")\n        elif block_type == \"image\":\n            block[block_type] = {\"type\": \"external\", \"external\": {\"url\": kwargs.get(\"image_url\", \"\")}}\n        elif block_type == \"divider\":\n            pass\n        elif block_type == \"bookmark\":\n            block[block_type][\"url\"] = kwargs.get(\"link_url\", \"\")\n        elif block_type == \"table\":\n            block[block_type][\"table_width\"] = kwargs.get(\"table_width\", 0)\n            block[block_type][\"has_column_header\"] = kwargs.get(\"has_column_header\", False)\n            block[block_type][\"has_row_header\"] = kwargs.get(\"has_row_header\", False)\n        elif block_type == \"table_row\":\n            block[block_type][\"cells\"] = [[{\"type\": \"text\", \"text\": {\"content\": cell}} for cell in content]]\n\n        return block\n",
+        "fileTypes": [],
+        "file_path": "",
+        "password": false,
+        "name": "code",
+        "advanced": true,
+        "dynamic": true,
+        "info": "",
+        "load_from_db": false,
+        "title_case": false
+      },
+      "markdown_text": {
+        "tool_mode": false,
+        "trace_as_input": true,
+        "multiline": true,
+        "trace_as_metadata": true,
+        "load_from_db": false,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "markdown_text",
+        "value": "",
+        "display_name": "Markdown Text",
+        "advanced": false,
+        "input_types": [
+          "Message"
+        ],
+        "dynamic": false,
+        "info": "The markdown text to convert to Notion blocks.",
+        "title_case": false,
+        "copy_field": false,
+        "type": "str",
+        "_input_type": "MultilineInput"
+      },
+      "notion_secret": {
+        "load_from_db": true,
+        "required": true,
+        "placeholder": "",
+        "show": true,
+        "name": "notion_secret",
+        "value": "",
+        "display_name": "Notion Secret",
+        "advanced": false,
+        "input_types": [],
+        "dynamic": false,
+        "info": "The Notion integration token.",
+        "title_case": false,
+        "password": true,
+        "type": "str",
+        "_input_type": "SecretStrInput"
+      }
+    },
+    "description": "Convert markdown text to Notion blocks and append them to a Notion page.",
+    "icon": "NotionDirectoryLoader",
+    "base_classes": [
+      "Data",
+      "Tool"
+    ],
+    "display_name": "Add Content to Page ",
+    "documentation": "https://developers.notion.com/reference/patch-block-children",
+    "minimized": false,
+    "custom_fields": {},
+    "output_types": [],
+    "pinned": false,
+    "conditional_paths": [],
+    "frozen": false,
+    "outputs": [
+      {
+        "types": [
+          "Data"
+        ],
+        "selected": "Data",
+        "name": "api_run_model",
+        "display_name": "Data",
+        "method": "run_model",
+        "value": "__UNDEFINED__",
+        "cache": true,
+        "required_inputs": [
+          "notion_secret"
+        ],
+        "allows_loop": false,
+        "tool_mode": true
+      },
+      {
+        "types": [
+          "Tool"
+        ],
+        "selected": "Tool",
+        "name": "api_build_tool",
+        "display_name": "Tool",
+        "method": "build_tool",
+        "value": "__UNDEFINED__",
+        "cache": true,
+        "required_inputs": [
+          "notion_secret"
+        ],
+        "allows_loop": false,
+        "tool_mode": true
+      }
+    ],
+    "field_order": [
+      "markdown_text",
+      "block_id",
+      "notion_secret"
+    ],
+    "beta": false,
+    "legacy": false,
+    "edited": false,
+    "metadata": {},
+    "tool_mode": false
+  },
+  "NotionListPages": {
+    "template": {
+      "_type": "Component",
+      "code": {
+        "type": "code",
+        "required": true,
+        "placeholder": "",
+        "list": false,
+        "show": true,
+        "multiline": true,
+        "value": "import json\nfrom typing import Any\n\nimport requests\nfrom langchain.tools import StructuredTool\nfrom loguru import logger\nfrom pydantic import BaseModel, Field\n\nfrom langflow.base.langchain_utilities.model import LCToolComponent\nfrom langflow.field_typing import Tool\nfrom langflow.inputs import MultilineInput, SecretStrInput, StrInput\nfrom langflow.schema import Data\n\n\nclass NotionListPages(LCToolComponent):\n    display_name: str = \"List Pages \"\n    description: str = (\n        \"Query a Notion database with filtering and sorting. \"\n        \"The input should be a JSON string containing the 'filter' and 'sorts' objects. \"\n        \"Example input:\\n\"\n        '{\"filter\": {\"property\": \"Status\", \"select\": {\"equals\": \"Done\"}}, '\n        '\"sorts\": [{\"timestamp\": \"created_time\", \"direction\": \"descending\"}]}'\n    )\n    documentation: str = \"https://docs.langflow.org/integrations/notion/list-pages\"\n    icon = \"NotionDirectoryLoader\"\n\n    inputs = [\n        SecretStrInput(\n            name=\"notion_secret\",\n            display_name=\"Notion Secret\",\n            info=\"The Notion integration token.\",\n            required=True,\n        ),\n        StrInput(\n            name=\"database_id\",\n            display_name=\"Database ID\",\n            info=\"The ID of the Notion database to query.\",\n        ),\n        MultilineInput(\n            name=\"query_json\",\n            display_name=\"Database query (JSON)\",\n            info=\"A JSON string containing the filters and sorts that will be used for querying the database. \"\n            \"Leave empty for no filters or sorts.\",\n        ),\n    ]\n\n    class NotionListPagesSchema(BaseModel):\n        database_id: str = Field(..., description=\"The ID of the Notion database to query.\")\n        query_json: str | None = Field(\n            default=\"\",\n            description=\"A JSON string containing the filters and sorts for querying the database. \"\n            \"Leave empty for no filters or sorts.\",\n        )\n\n    def run_model(self) -> list[Data]:\n        result = self._query_notion_database(self.database_id, self.query_json)\n\n        if isinstance(result, str):\n            # An error occurred, return it as a single record\n            return [Data(text=result)]\n\n        records = []\n        combined_text = f\"Pages found: {len(result)}\\n\\n\"\n\n        for page in result:\n            page_data = {\n                \"id\": page[\"id\"],\n                \"url\": page[\"url\"],\n                \"created_time\": page[\"created_time\"],\n                \"last_edited_time\": page[\"last_edited_time\"],\n                \"properties\": page[\"properties\"],\n            }\n\n            text = (\n                f\"id: {page['id']}\\n\"\n                f\"url: {page['url']}\\n\"\n                f\"created_time: {page['created_time']}\\n\"\n                f\"last_edited_time: {page['last_edited_time']}\\n\"\n                f\"properties: {json.dumps(page['properties'], indent=2)}\\n\\n\"\n            )\n\n            combined_text += text\n            records.append(Data(text=text, **page_data))\n\n        self.status = records\n        return records\n\n    def build_tool(self) -> Tool:\n        return StructuredTool.from_function(\n            name=\"notion_list_pages\",\n            description=self.description,\n            func=self._query_notion_database,\n            args_schema=self.NotionListPagesSchema,\n        )\n\n    def _query_notion_database(self, database_id: str, query_json: str | None = None) -> list[dict[str, Any]] | str:\n        url = f\"https://api.notion.com/v1/databases/{database_id}/query\"\n        headers = {\n            \"Authorization\": f\"Bearer {self.notion_secret}\",\n            \"Content-Type\": \"application/json\",\n            \"Notion-Version\": \"2022-06-28\",\n        }\n\n        query_payload = {}\n        if query_json and query_json.strip():\n            try:\n                query_payload = json.loads(query_json)\n            except json.JSONDecodeError as e:\n                return f\"Invalid JSON format for query: {e}\"\n\n        try:\n            response = requests.post(url, headers=headers, json=query_payload, timeout=10)\n            response.raise_for_status()\n            results = response.json()\n            return results[\"results\"]\n        except requests.exceptions.RequestException as e:\n            return f\"Error querying Notion database: {e}\"\n        except KeyError:\n            return \"Unexpected response format from Notion API\"\n        except Exception as e:  # noqa: BLE001\n            logger.opt(exception=True).debug(\"Error querying Notion database\")\n            return f\"An unexpected error occurred: {e}\"\n",
+        "fileTypes": [],
+        "file_path": "",
+        "password": false,
+        "name": "code",
+        "advanced": true,
+        "dynamic": true,
+        "info": "",
+        "load_from_db": false,
+        "title_case": false
+      },
+      "database_id": {
+        "tool_mode": false,
+        "trace_as_metadata": true,
+        "load_from_db": false,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "database_id",
+        "value": "",
+        "display_name": "Database ID",
+        "advanced": false,
+        "dynamic": false,
+        "info": "The ID of the Notion database to query.",
+        "title_case": false,
+        "type": "str",
+        "_input_type": "StrInput"
+      },
+      "notion_secret": {
+        "load_from_db": true,
+        "required": true,
+        "placeholder": "",
+        "show": true,
+        "name": "notion_secret",
+        "value": "",
+        "display_name": "Notion Secret",
+        "advanced": false,
+        "input_types": [],
+        "dynamic": false,
+        "info": "The Notion integration token.",
+        "title_case": false,
+        "password": true,
+        "type": "str",
+        "_input_type": "SecretStrInput"
+      },
+      "query_json": {
+        "tool_mode": false,
+        "trace_as_input": true,
+        "multiline": true,
+        "trace_as_metadata": true,
+        "load_from_db": false,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "query_json",
+        "value": "",
+        "display_name": "Database query (JSON)",
+        "advanced": false,
+        "input_types": [
+          "Message"
+        ],
+        "dynamic": false,
+        "info": "A JSON string containing the filters and sorts that will be used for querying the database. Leave empty for no filters or sorts.",
+        "title_case": false,
+        "copy_field": false,
+        "type": "str",
+        "_input_type": "MultilineInput"
+      }
+    },
+    "description": "Query a Notion database with filtering and sorting. The input should be a JSON string containing the 'filter' and 'sorts' objects. Example input:\n{\"filter\": {\"property\": \"Status\", \"select\": {\"equals\": \"Done\"}}, \"sorts\": [{\"timestamp\": \"created_time\", \"direction\": \"descending\"}]}",
+    "icon": "NotionDirectoryLoader",
+    "base_classes": [
+      "Data",
+      "Tool"
+    ],
+    "display_name": "List Pages ",
+    "documentation": "https://docs.langflow.org/integrations/notion/list-pages",
+    "minimized": false,
+    "custom_fields": {},
+    "output_types": [],
+    "pinned": false,
+    "conditional_paths": [],
+    "frozen": false,
+    "outputs": [
+      {
+        "types": [
+          "Data"
+        ],
+        "selected": "Data",
+        "name": "api_run_model",
+        "display_name": "Data",
+        "method": "run_model",
+        "value": "__UNDEFINED__",
+        "cache": true,
+        "required_inputs": [
+          "notion_secret"
+        ],
+        "allows_loop": false,
+        "tool_mode": true
+      },
+      {
+        "types": [
+          "Tool"
+        ],
+        "selected": "Tool",
+        "name": "api_build_tool",
+        "display_name": "Tool",
+        "method": "build_tool",
+        "value": "__UNDEFINED__",
+        "cache": true,
+        "required_inputs": [
+          "notion_secret"
+        ],
+        "allows_loop": false,
+        "tool_mode": true
+      }
+    ],
+    "field_order": [
+      "notion_secret",
+      "database_id",
+      "query_json"
+    ],
+    "beta": false,
+    "legacy": false,
+    "edited": false,
+    "metadata": {},
+    "tool_mode": false
+  },
+  "NotionPageCreator": {
+    "template": {
+      "_type": "Component",
+      "code": {
+        "type": "code",
+        "required": true,
+        "placeholder": "",
+        "list": false,
+        "show": true,
+        "multiline": true,
+        "value": "import json\nfrom typing import Any\n\nimport requests\nfrom langchain.tools import StructuredTool\nfrom pydantic import BaseModel, Field\n\nfrom langflow.base.langchain_utilities.model import LCToolComponent\nfrom langflow.field_typing import Tool\nfrom langflow.inputs import MultilineInput, SecretStrInput, StrInput\nfrom langflow.schema import Data\n\n\nclass NotionPageCreator(LCToolComponent):\n    display_name: str = \"Create Page \"\n    description: str = \"A component for creating Notion pages.\"\n    documentation: str = \"https://docs.langflow.org/integrations/notion/page-create\"\n    icon = \"NotionDirectoryLoader\"\n\n    inputs = [\n        StrInput(\n            name=\"database_id\",\n            display_name=\"Database ID\",\n            info=\"The ID of the Notion database.\",\n        ),\n        SecretStrInput(\n            name=\"notion_secret\",\n            display_name=\"Notion Secret\",\n            info=\"The Notion integration token.\",\n            required=True,\n        ),\n        MultilineInput(\n            name=\"properties_json\",\n            display_name=\"Properties (JSON)\",\n            info=\"The properties of the new page as a JSON string.\",\n        ),\n    ]\n\n    class NotionPageCreatorSchema(BaseModel):\n        database_id: str = Field(..., description=\"The ID of the Notion database.\")\n        properties_json: str = Field(..., description=\"The properties of the new page as a JSON string.\")\n\n    def run_model(self) -> Data:\n        result = self._create_notion_page(self.database_id, self.properties_json)\n        if isinstance(result, str):\n            # An error occurred, return it as text\n            return Data(text=result)\n        # Success, return the created page data\n        output = \"Created page properties:\\n\"\n        for prop_name, prop_value in result.get(\"properties\", {}).items():\n            output += f\"{prop_name}: {prop_value}\\n\"\n        return Data(text=output, data=result)\n\n    def build_tool(self) -> Tool:\n        return StructuredTool.from_function(\n            name=\"create_notion_page\",\n            description=\"Create a new page in a Notion database. \"\n            \"IMPORTANT: Use the tool to check the Database properties for more details before using this tool.\",\n            func=self._create_notion_page,\n            args_schema=self.NotionPageCreatorSchema,\n        )\n\n    def _create_notion_page(self, database_id: str, properties_json: str) -> dict[str, Any] | str:\n        if not database_id or not properties_json:\n            return \"Invalid input. Please provide 'database_id' and 'properties_json'.\"\n\n        try:\n            properties = json.loads(properties_json)\n        except json.JSONDecodeError as e:\n            return f\"Invalid properties format. Please provide a valid JSON string. Error: {e}\"\n\n        headers = {\n            \"Authorization\": f\"Bearer {self.notion_secret}\",\n            \"Content-Type\": \"application/json\",\n            \"Notion-Version\": \"2022-06-28\",\n        }\n\n        data = {\n            \"parent\": {\"database_id\": database_id},\n            \"properties\": properties,\n        }\n\n        try:\n            response = requests.post(\"https://api.notion.com/v1/pages\", headers=headers, json=data, timeout=10)\n            response.raise_for_status()\n            return response.json()\n        except requests.exceptions.RequestException as e:\n            error_message = f\"Failed to create Notion page. Error: {e}\"\n            if hasattr(e, \"response\") and e.response is not None:\n                error_message += f\" Status code: {e.response.status_code}, Response: {e.response.text}\"\n            return error_message\n\n    def __call__(self, *args, **kwargs):\n        return self._create_notion_page(*args, **kwargs)\n",
+        "fileTypes": [],
+        "file_path": "",
+        "password": false,
+        "name": "code",
+        "advanced": true,
+        "dynamic": true,
+        "info": "",
+        "load_from_db": false,
+        "title_case": false
+      },
+      "database_id": {
+        "tool_mode": false,
+        "trace_as_metadata": true,
+        "load_from_db": false,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "database_id",
+        "value": "",
+        "display_name": "Database ID",
+        "advanced": false,
+        "dynamic": false,
+        "info": "The ID of the Notion database.",
+        "title_case": false,
+        "type": "str",
+        "_input_type": "StrInput"
+      },
+      "notion_secret": {
+        "load_from_db": true,
+        "required": true,
+        "placeholder": "",
+        "show": true,
+        "name": "notion_secret",
+        "value": "",
+        "display_name": "Notion Secret",
+        "advanced": false,
+        "input_types": [],
+        "dynamic": false,
+        "info": "The Notion integration token.",
+        "title_case": false,
+        "password": true,
+        "type": "str",
+        "_input_type": "SecretStrInput"
+      },
+      "properties_json": {
+        "tool_mode": false,
+        "trace_as_input": true,
+        "multiline": true,
+        "trace_as_metadata": true,
+        "load_from_db": false,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "properties_json",
+        "value": "",
+        "display_name": "Properties (JSON)",
+        "advanced": false,
+        "input_types": [
+          "Message"
+        ],
+        "dynamic": false,
+        "info": "The properties of the new page as a JSON string.",
+        "title_case": false,
+        "copy_field": false,
+        "type": "str",
+        "_input_type": "MultilineInput"
+      }
+    },
+    "description": "A component for creating Notion pages.",
+    "icon": "NotionDirectoryLoader",
+    "base_classes": [
+      "Data",
+      "Tool"
+    ],
+    "display_name": "Create Page ",
+    "documentation": "https://docs.langflow.org/integrations/notion/page-create",
+    "minimized": false,
+    "custom_fields": {},
+    "output_types": [],
+    "pinned": false,
+    "conditional_paths": [],
+    "frozen": false,
+    "outputs": [
+      {
+        "types": [
+          "Data"
+        ],
+        "selected": "Data",
+        "name": "api_run_model",
+        "display_name": "Data",
+        "method": "run_model",
+        "value": "__UNDEFINED__",
+        "cache": true,
+        "required_inputs": [
+          "notion_secret"
+        ],
+        "allows_loop": false,
+        "tool_mode": true
+      },
+      {
+        "types": [
+          "Tool"
+        ],
+        "selected": "Tool",
+        "name": "api_build_tool",
+        "display_name": "Tool",
+        "method": "build_tool",
+        "value": "__UNDEFINED__",
+        "cache": true,
+        "required_inputs": [
+          "notion_secret"
+        ],
+        "allows_loop": false,
+        "tool_mode": true
+      }
+    ],
+    "field_order": [
+      "database_id",
+      "notion_secret",
+      "properties_json"
+    ],
+    "beta": false,
+    "legacy": false,
+    "edited": false,
+    "metadata": {},
+    "tool_mode": false
+  },
+  "NotionDatabaseProperties": {
+    "template": {
+      "_type": "Component",
+      "code": {
+        "type": "code",
+        "required": true,
+        "placeholder": "",
+        "list": false,
+        "show": true,
+        "multiline": true,
+        "value": "import requests\nfrom langchain.tools import StructuredTool\nfrom loguru import logger\nfrom pydantic import BaseModel, Field\n\nfrom langflow.base.langchain_utilities.model import LCToolComponent\nfrom langflow.field_typing import Tool\nfrom langflow.inputs import SecretStrInput, StrInput\nfrom langflow.schema import Data\n\n\nclass NotionDatabaseProperties(LCToolComponent):\n    display_name: str = \"List Database Properties \"\n    description: str = \"Retrieve properties of a Notion database.\"\n    documentation: str = \"https://docs.langflow.org/integrations/notion/list-database-properties\"\n    icon = \"NotionDirectoryLoader\"\n\n    inputs = [\n        StrInput(\n            name=\"database_id\",\n            display_name=\"Database ID\",\n            info=\"The ID of the Notion database.\",\n        ),\n        SecretStrInput(\n            name=\"notion_secret\",\n            display_name=\"Notion Secret\",\n            info=\"The Notion integration token.\",\n            required=True,\n        ),\n    ]\n\n    class NotionDatabasePropertiesSchema(BaseModel):\n        database_id: str = Field(..., description=\"The ID of the Notion database.\")\n\n    def run_model(self) -> Data:\n        result = self._fetch_database_properties(self.database_id)\n        if isinstance(result, str):\n            # An error occurred, return it as text\n            return Data(text=result)\n        # Success, return the properties\n        return Data(text=str(result), data=result)\n\n    def build_tool(self) -> Tool:\n        return StructuredTool.from_function(\n            name=\"notion_database_properties\",\n            description=\"Retrieve properties of a Notion database. Input should include the database ID.\",\n            func=self._fetch_database_properties,\n            args_schema=self.NotionDatabasePropertiesSchema,\n        )\n\n    def _fetch_database_properties(self, database_id: str) -> dict | str:\n        url = f\"https://api.notion.com/v1/databases/{database_id}\"\n        headers = {\n            \"Authorization\": f\"Bearer {self.notion_secret}\",\n            \"Notion-Version\": \"2022-06-28\",  # Use the latest supported version\n        }\n        try:\n            response = requests.get(url, headers=headers, timeout=10)\n            response.raise_for_status()\n            data = response.json()\n            return data.get(\"properties\", {})\n        except requests.exceptions.RequestException as e:\n            return f\"Error fetching Notion database properties: {e}\"\n        except ValueError as e:\n            return f\"Error parsing Notion API response: {e}\"\n        except Exception as e:  # noqa: BLE001\n            logger.opt(exception=True).debug(\"Error fetching Notion database properties\")\n            return f\"An unexpected error occurred: {e}\"\n",
+        "fileTypes": [],
+        "file_path": "",
+        "password": false,
+        "name": "code",
+        "advanced": true,
+        "dynamic": true,
+        "info": "",
+        "load_from_db": false,
+        "title_case": false
+      },
+      "database_id": {
+        "tool_mode": false,
+        "trace_as_metadata": true,
+        "load_from_db": false,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "database_id",
+        "value": "",
+        "display_name": "Database ID",
+        "advanced": false,
+        "dynamic": false,
+        "info": "The ID of the Notion database.",
+        "title_case": false,
+        "type": "str",
+        "_input_type": "StrInput"
+      },
+      "notion_secret": {
+        "load_from_db": true,
+        "required": true,
+        "placeholder": "",
+        "show": true,
+        "name": "notion_secret",
+        "value": "",
+        "display_name": "Notion Secret",
+        "advanced": false,
+        "input_types": [],
+        "dynamic": false,
+        "info": "The Notion integration token.",
+        "title_case": false,
+        "password": true,
+        "type": "str",
+        "_input_type": "SecretStrInput"
+      }
+    },
+    "description": "Retrieve properties of a Notion database.",
+    "icon": "NotionDirectoryLoader",
+    "base_classes": [
+      "Data",
+      "Tool"
+    ],
+    "display_name": "List Database Properties ",
+    "documentation": "https://docs.langflow.org/integrations/notion/list-database-properties",
+    "minimized": false,
+    "custom_fields": {},
+    "output_types": [],
+    "pinned": false,
+    "conditional_paths": [],
+    "frozen": false,
+    "outputs": [
+      {
+        "types": [
+          "Data"
+        ],
+        "selected": "Data",
+        "name": "api_run_model",
+        "display_name": "Data",
+        "method": "run_model",
+        "value": "__UNDEFINED__",
+        "cache": true,
+        "required_inputs": [
+          "notion_secret"
+        ],
+        "allows_loop": false,
+        "tool_mode": true
+      },
+      {
+        "types": [
+          "Tool"
+        ],
+        "selected": "Tool",
+        "name": "api_build_tool",
+        "display_name": "Tool",
+        "method": "build_tool",
+        "value": "__UNDEFINED__",
+        "cache": true,
+        "required_inputs": [
+          "notion_secret"
+        ],
+        "allows_loop": false,
+        "tool_mode": true
+      }
+    ],
+    "field_order": [
+      "database_id",
+      "notion_secret"
+    ],
+    "beta": false,
+    "legacy": false,
+    "edited": false,
+    "metadata": {},
+    "tool_mode": false
+  },
+  "NotionSearch": {
+    "template": {
+      "_type": "Component",
+      "code": {
+        "type": "code",
+        "required": true,
+        "placeholder": "",
+        "list": false,
+        "show": true,
+        "multiline": true,
+        "value": "from typing import Any\n\nimport requests\nfrom langchain.tools import StructuredTool\nfrom pydantic import BaseModel, Field\n\nfrom langflow.base.langchain_utilities.model import LCToolComponent\nfrom langflow.field_typing import Tool\nfrom langflow.inputs import DropdownInput, SecretStrInput, StrInput\nfrom langflow.schema import Data\n\n\nclass NotionSearch(LCToolComponent):\n    display_name: str = \"Search \"\n    description: str = \"Searches all pages and databases that have been shared with an integration.\"\n    documentation: str = \"https://docs.langflow.org/integrations/notion/search\"\n    icon = \"NotionDirectoryLoader\"\n\n    inputs = [\n        SecretStrInput(\n            name=\"notion_secret\",\n            display_name=\"Notion Secret\",\n            info=\"The Notion integration token.\",\n            required=True,\n        ),\n        StrInput(\n            name=\"query\",\n            display_name=\"Search Query\",\n            info=\"The text that the API compares page and database titles against.\",\n        ),\n        DropdownInput(\n            name=\"filter_value\",\n            display_name=\"Filter Type\",\n            info=\"Limits the results to either only pages or only databases.\",\n            options=[\"page\", \"database\"],\n            value=\"page\",\n        ),\n        DropdownInput(\n            name=\"sort_direction\",\n            display_name=\"Sort Direction\",\n            info=\"The direction to sort the results.\",\n            options=[\"ascending\", \"descending\"],\n            value=\"descending\",\n        ),\n    ]\n\n    class NotionSearchSchema(BaseModel):\n        query: str = Field(..., description=\"The search query text.\")\n        filter_value: str = Field(default=\"page\", description=\"Filter type: 'page' or 'database'.\")\n        sort_direction: str = Field(default=\"descending\", description=\"Sort direction: 'ascending' or 'descending'.\")\n\n    def run_model(self) -> list[Data]:\n        results = self._search_notion(self.query, self.filter_value, self.sort_direction)\n        records = []\n        combined_text = f\"Results found: {len(results)}\\n\\n\"\n\n        for result in results:\n            result_data = {\n                \"id\": result[\"id\"],\n                \"type\": result[\"object\"],\n                \"last_edited_time\": result[\"last_edited_time\"],\n            }\n\n            if result[\"object\"] == \"page\":\n                result_data[\"title_or_url\"] = result[\"url\"]\n                text = f\"id: {result['id']}\\ntitle_or_url: {result['url']}\\n\"\n            elif result[\"object\"] == \"database\":\n                if \"title\" in result and isinstance(result[\"title\"], list) and len(result[\"title\"]) > 0:\n                    result_data[\"title_or_url\"] = result[\"title\"][0][\"plain_text\"]\n                    text = f\"id: {result['id']}\\ntitle_or_url: {result['title'][0]['plain_text']}\\n\"\n                else:\n                    result_data[\"title_or_url\"] = \"N/A\"\n                    text = f\"id: {result['id']}\\ntitle_or_url: N/A\\n\"\n\n            text += f\"type: {result['object']}\\nlast_edited_time: {result['last_edited_time']}\\n\\n\"\n            combined_text += text\n            records.append(Data(text=text, data=result_data))\n\n        self.status = records\n        return records\n\n    def build_tool(self) -> Tool:\n        return StructuredTool.from_function(\n            name=\"notion_search\",\n            description=\"Search Notion pages and databases. \"\n            \"Input should include the search query and optionally filter type and sort direction.\",\n            func=self._search_notion,\n            args_schema=self.NotionSearchSchema,\n        )\n\n    def _search_notion(\n        self, query: str, filter_value: str = \"page\", sort_direction: str = \"descending\"\n    ) -> list[dict[str, Any]]:\n        url = \"https://api.notion.com/v1/search\"\n        headers = {\n            \"Authorization\": f\"Bearer {self.notion_secret}\",\n            \"Content-Type\": \"application/json\",\n            \"Notion-Version\": \"2022-06-28\",\n        }\n\n        data = {\n            \"query\": query,\n            \"filter\": {\"value\": filter_value, \"property\": \"object\"},\n            \"sort\": {\"direction\": sort_direction, \"timestamp\": \"last_edited_time\"},\n        }\n\n        response = requests.post(url, headers=headers, json=data, timeout=10)\n        response.raise_for_status()\n\n        results = response.json()\n        return results[\"results\"]\n",
+        "fileTypes": [],
+        "file_path": "",
+        "password": false,
+        "name": "code",
+        "advanced": true,
+        "dynamic": true,
+        "info": "",
+        "load_from_db": false,
+        "title_case": false
+      },
+      "filter_value": {
+        "tool_mode": false,
+        "trace_as_metadata": true,
+        "options": [
+          "page",
+          "database"
+        ],
+        "options_metadata": [],
+        "combobox": false,
+        "dialog_inputs": {},
+        "toggle": false,
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "filter_value",
+        "value": "page",
+        "display_name": "Filter Type",
+        "advanced": false,
+        "dynamic": false,
+        "info": "Limits the results to either only pages or only databases.",
+        "title_case": false,
+        "type": "str",
+        "_input_type": "DropdownInput"
+      },
+      "notion_secret": {
+        "load_from_db": true,
+        "required": true,
+        "placeholder": "",
+        "show": true,
+        "name": "notion_secret",
+        "value": "",
+        "display_name": "Notion Secret",
+        "advanced": false,
+        "input_types": [],
+        "dynamic": false,
+        "info": "The Notion integration token.",
+        "title_case": false,
+        "password": true,
+        "type": "str",
+        "_input_type": "SecretStrInput"
+      },
+      "query": {
+        "tool_mode": false,
+        "trace_as_metadata": true,
+        "load_from_db": false,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "query",
+        "value": "",
+        "display_name": "Search Query",
+        "advanced": false,
+        "dynamic": false,
+        "info": "The text that the API compares page and database titles against.",
+        "title_case": false,
+        "type": "str",
+        "_input_type": "StrInput"
+      },
+      "sort_direction": {
+        "tool_mode": false,
+        "trace_as_metadata": true,
+        "options": [
+          "ascending",
+          "descending"
+        ],
+        "options_metadata": [],
+        "combobox": false,
+        "dialog_inputs": {},
+        "toggle": false,
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "sort_direction",
+        "value": "descending",
+        "display_name": "Sort Direction",
+        "advanced": false,
+        "dynamic": false,
+        "info": "The direction to sort the results.",
+        "title_case": false,
+        "type": "str",
+        "_input_type": "DropdownInput"
+      }
+    },
+    "description": "Searches all pages and databases that have been shared with an integration.",
+    "icon": "NotionDirectoryLoader",
+    "base_classes": [
+      "Data",
+      "Tool"
+    ],
+    "display_name": "Search ",
+    "documentation": "https://docs.langflow.org/integrations/notion/search",
+    "minimized": false,
+    "custom_fields": {},
+    "output_types": [],
+    "pinned": false,
+    "conditional_paths": [],
+    "frozen": false,
+    "outputs": [
+      {
+        "types": [
+          "Data"
+        ],
+        "selected": "Data",
+        "name": "api_run_model",
+        "display_name": "Data",
+        "method": "run_model",
+        "value": "__UNDEFINED__",
+        "cache": true,
+        "required_inputs": [
+          "notion_secret"
+        ],
+        "allows_loop": false,
+        "tool_mode": true
+      },
+      {
+        "types": [
+          "Tool"
+        ],
+        "selected": "Tool",
+        "name": "api_build_tool",
+        "display_name": "Tool",
+        "method": "build_tool",
+        "value": "__UNDEFINED__",
+        "cache": true,
+        "required_inputs": [
+          "notion_secret"
+        ],
+        "allows_loop": false,
+        "tool_mode": true
+      }
+    ],
+    "field_order": [
+      "notion_secret",
+      "query",
+      "filter_value",
+      "sort_direction"
+    ],
+    "beta": false,
+    "legacy": false,
+    "edited": false,
+    "metadata": {},
+    "tool_mode": false
+  },
+  "NotionUserList": {
+    "template": {
+      "_type": "Component",
+      "code": {
+        "type": "code",
+        "required": true,
+        "placeholder": "",
+        "list": false,
+        "show": true,
+        "multiline": true,
+        "value": "import requests\nfrom langchain.tools import StructuredTool\nfrom pydantic import BaseModel\n\nfrom langflow.base.langchain_utilities.model import LCToolComponent\nfrom langflow.field_typing import Tool\nfrom langflow.inputs import SecretStrInput\nfrom langflow.schema import Data\n\n\nclass NotionUserList(LCToolComponent):\n    display_name = \"List Users \"\n    description = \"Retrieve users from Notion.\"\n    documentation = \"https://docs.langflow.org/integrations/notion/list-users\"\n    icon = \"NotionDirectoryLoader\"\n\n    inputs = [\n        SecretStrInput(\n            name=\"notion_secret\",\n            display_name=\"Notion Secret\",\n            info=\"The Notion integration token.\",\n            required=True,\n        ),\n    ]\n\n    class NotionUserListSchema(BaseModel):\n        pass\n\n    def run_model(self) -> list[Data]:\n        users = self._list_users()\n        records = []\n        combined_text = \"\"\n\n        for user in users:\n            output = \"User:\\n\"\n            for key, value in user.items():\n                output += f\"{key.replace('_', ' ').title()}: {value}\\n\"\n            output += \"________________________\\n\"\n\n            combined_text += output\n            records.append(Data(text=output, data=user))\n\n        self.status = records\n        return records\n\n    def build_tool(self) -> Tool:\n        return StructuredTool.from_function(\n            name=\"notion_list_users\",\n            description=\"Retrieve users from Notion.\",\n            func=self._list_users,\n            args_schema=self.NotionUserListSchema,\n        )\n\n    def _list_users(self) -> list[dict]:\n        url = \"https://api.notion.com/v1/users\"\n        headers = {\n            \"Authorization\": f\"Bearer {self.notion_secret}\",\n            \"Notion-Version\": \"2022-06-28\",\n        }\n\n        response = requests.get(url, headers=headers, timeout=10)\n        response.raise_for_status()\n\n        data = response.json()\n        results = data[\"results\"]\n\n        users = []\n        for user in results:\n            user_data = {\n                \"id\": user[\"id\"],\n                \"type\": user[\"type\"],\n                \"name\": user.get(\"name\", \"\"),\n                \"avatar_url\": user.get(\"avatar_url\", \"\"),\n            }\n            users.append(user_data)\n\n        return users\n",
+        "fileTypes": [],
+        "file_path": "",
+        "password": false,
+        "name": "code",
+        "advanced": true,
+        "dynamic": true,
+        "info": "",
+        "load_from_db": false,
+        "title_case": false
+      },
+      "notion_secret": {
+        "load_from_db": true,
+        "required": true,
+        "placeholder": "",
+        "show": true,
+        "name": "notion_secret",
+        "value": "",
+        "display_name": "Notion Secret",
+        "advanced": false,
+        "input_types": [],
+        "dynamic": false,
+        "info": "The Notion integration token.",
+        "title_case": false,
+        "password": true,
+        "type": "str",
+        "_input_type": "SecretStrInput"
+      }
+    },
+    "description": "Retrieve users from Notion.",
+    "icon": "NotionDirectoryLoader",
+    "base_classes": [
+      "Data",
+      "Tool"
+    ],
+    "display_name": "List Users ",
+    "documentation": "https://docs.langflow.org/integrations/notion/list-users",
+    "minimized": false,
+    "custom_fields": {},
+    "output_types": [],
+    "pinned": false,
+    "conditional_paths": [],
+    "frozen": false,
+    "outputs": [
+      {
+        "types": [
+          "Data"
+        ],
+        "selected": "Data",
+        "name": "api_run_model",
+        "display_name": "Data",
+        "method": "run_model",
+        "value": "__UNDEFINED__",
+        "cache": true,
+        "required_inputs": [
+          "notion_secret"
+        ],
+        "allows_loop": false,
+        "tool_mode": true
+      },
+      {
+        "types": [
+          "Tool"
+        ],
+        "selected": "Tool",
+        "name": "api_build_tool",
+        "display_name": "Tool",
+        "method": "build_tool",
+        "value": "__UNDEFINED__",
+        "cache": true,
+        "required_inputs": [
+          "notion_secret"
+        ],
+        "allows_loop": false,
+        "tool_mode": true
+      }
+    ],
+    "field_order": [
+      "notion_secret"
+    ],
+    "beta": false,
+    "legacy": false,
+    "edited": false,
+    "metadata": {},
+    "tool_mode": false
+  }
+}

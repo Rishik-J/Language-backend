@@ -1,0 +1,324 @@
+{
+  "ScrapeGraphMarkdownifyApi": {
+    "template": {
+      "_type": "Component",
+      "api_key": {
+        "load_from_db": true,
+        "required": true,
+        "placeholder": "",
+        "show": true,
+        "name": "api_key",
+        "value": "",
+        "display_name": "ScrapeGraph API Key",
+        "advanced": false,
+        "input_types": [],
+        "dynamic": false,
+        "info": "The API key to use ScrapeGraph API.",
+        "title_case": false,
+        "password": true,
+        "type": "str",
+        "_input_type": "SecretStrInput"
+      },
+      "code": {
+        "type": "code",
+        "required": true,
+        "placeholder": "",
+        "list": false,
+        "show": true,
+        "multiline": true,
+        "value": "from langflow.custom import Component\nfrom langflow.io import (\n    MessageTextInput,\n    Output,\n    SecretStrInput,\n)\nfrom langflow.schema import Data\n\n\nclass ScrapeGraphMarkdownifyApi(Component):\n    display_name: str = \"ScrapeGraphMarkdownifyApi\"\n    description: str = \"\"\"ScrapeGraph Markdownify API.\n    Given a URL, it will return the markdownified content of the website.\n    More info at https://docs.scrapegraphai.com/services/markdownify\"\"\"\n    name = \"ScrapeGraphMarkdownifyApi\"\n\n    output_types: list[str] = [\"Document\"]\n    documentation: str = \"https://docs.scrapegraphai.com/introduction\"\n\n    inputs = [\n        SecretStrInput(\n            name=\"api_key\",\n            display_name=\"ScrapeGraph API Key\",\n            required=True,\n            password=True,\n            info=\"The API key to use ScrapeGraph API.\",\n        ),\n        MessageTextInput(\n            name=\"url\",\n            display_name=\"URL\",\n            tool_mode=True,\n            info=\"The URL to markdownify.\",\n        ),\n    ]\n\n    outputs = [\n        Output(display_name=\"Data\", name=\"data\", method=\"scrape\"),\n    ]\n\n    def scrape(self) -> list[Data]:\n        try:\n            from scrapegraph_py import Client\n            from scrapegraph_py.logger import sgai_logger\n        except ImportError as e:\n            msg = \"Could not import scrapegraph-py package. Please install it with `pip install scrapegraph-py`.\"\n            raise ImportError(msg) from e\n\n        # Set logging level\n        sgai_logger.set_logging(level=\"INFO\")\n\n        # Initialize the client with API key\n        sgai_client = Client(api_key=self.api_key)\n\n        try:\n            # Markdownify request\n            response = sgai_client.markdownify(\n                website_url=self.url,\n            )\n\n            # Close the client\n            sgai_client.close()\n\n            return Data(data=response)\n        except Exception:\n            sgai_client.close()\n            raise\n",
+        "fileTypes": [],
+        "file_path": "",
+        "password": false,
+        "name": "code",
+        "advanced": true,
+        "dynamic": true,
+        "info": "",
+        "load_from_db": false,
+        "title_case": false
+      },
+      "url": {
+        "tool_mode": true,
+        "trace_as_input": true,
+        "trace_as_metadata": true,
+        "load_from_db": false,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "url",
+        "value": "",
+        "display_name": "URL",
+        "advanced": false,
+        "input_types": [
+          "Message"
+        ],
+        "dynamic": false,
+        "info": "The URL to markdownify.",
+        "title_case": false,
+        "type": "str",
+        "_input_type": "MessageTextInput"
+      }
+    },
+    "description": "ScrapeGraph Markdownify API.\n    Given a URL, it will return the markdownified content of the website.\n    More info at https://docs.scrapegraphai.com/services/markdownify",
+    "base_classes": [
+      "Data"
+    ],
+    "display_name": "ScrapeGraphMarkdownifyApi",
+    "documentation": "https://docs.scrapegraphai.com/introduction",
+    "minimized": false,
+    "custom_fields": {},
+    "output_types": [],
+    "pinned": false,
+    "conditional_paths": [],
+    "frozen": false,
+    "outputs": [
+      {
+        "types": [
+          "Data"
+        ],
+        "selected": "Data",
+        "name": "data",
+        "display_name": "Data",
+        "method": "scrape",
+        "value": "__UNDEFINED__",
+        "cache": true,
+        "allows_loop": false,
+        "tool_mode": true
+      }
+    ],
+    "field_order": [
+      "api_key",
+      "url"
+    ],
+    "beta": false,
+    "legacy": false,
+    "edited": false,
+    "metadata": {},
+    "tool_mode": false
+  },
+  "ScrapeGraphSmartScraperApi": {
+    "template": {
+      "_type": "Component",
+      "api_key": {
+        "load_from_db": true,
+        "required": true,
+        "placeholder": "",
+        "show": true,
+        "name": "api_key",
+        "value": "",
+        "display_name": "ScrapeGraph API Key",
+        "advanced": false,
+        "input_types": [],
+        "dynamic": false,
+        "info": "The API key to use ScrapeGraph API.",
+        "title_case": false,
+        "password": true,
+        "type": "str",
+        "_input_type": "SecretStrInput"
+      },
+      "code": {
+        "type": "code",
+        "required": true,
+        "placeholder": "",
+        "list": false,
+        "show": true,
+        "multiline": true,
+        "value": "from langflow.custom import Component\nfrom langflow.io import (\n    MessageTextInput,\n    Output,\n    SecretStrInput,\n)\nfrom langflow.schema import Data\n\n\nclass ScrapeGraphSmartScraperApi(Component):\n    display_name: str = \"ScrapeGraphSmartScraperApi\"\n    description: str = \"\"\"ScrapeGraph Smart Scraper API.\n    Given a URL, it will return the structured data of the website.\n    More info at https://docs.scrapegraphai.com/services/smartscraper\"\"\"\n    name = \"ScrapeGraphSmartScraperApi\"\n\n    output_types: list[str] = [\"Document\"]\n    documentation: str = \"https://docs.scrapegraphai.com/introduction\"\n\n    inputs = [\n        SecretStrInput(\n            name=\"api_key\",\n            display_name=\"ScrapeGraph API Key\",\n            required=True,\n            password=True,\n            info=\"The API key to use ScrapeGraph API.\",\n        ),\n        MessageTextInput(\n            name=\"url\",\n            display_name=\"URL\",\n            tool_mode=True,\n            info=\"The URL to scrape.\",\n        ),\n        MessageTextInput(\n            name=\"prompt\",\n            display_name=\"Prompt\",\n            tool_mode=True,\n            info=\"The prompt to use for the smart scraper.\",\n        ),\n    ]\n\n    outputs = [\n        Output(display_name=\"Data\", name=\"data\", method=\"scrape\"),\n    ]\n\n    def scrape(self) -> list[Data]:\n        try:\n            from scrapegraph_py import Client\n            from scrapegraph_py.logger import sgai_logger\n        except ImportError as e:\n            msg = \"Could not import scrapegraph-py package. Please install it with `pip install scrapegraph-py`.\"\n            raise ImportError(msg) from e\n\n        # Set logging level\n        sgai_logger.set_logging(level=\"INFO\")\n\n        # Initialize the client with API key\n        sgai_client = Client(api_key=self.api_key)\n\n        try:\n            # SmartScraper request\n            response = sgai_client.smartscraper(\n                website_url=self.url,\n                user_prompt=self.prompt,\n            )\n\n            # Close the client\n            sgai_client.close()\n\n            return Data(data=response)\n        except Exception:\n            sgai_client.close()\n            raise\n",
+        "fileTypes": [],
+        "file_path": "",
+        "password": false,
+        "name": "code",
+        "advanced": true,
+        "dynamic": true,
+        "info": "",
+        "load_from_db": false,
+        "title_case": false
+      },
+      "prompt": {
+        "tool_mode": true,
+        "trace_as_input": true,
+        "trace_as_metadata": true,
+        "load_from_db": false,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "prompt",
+        "value": "",
+        "display_name": "Prompt",
+        "advanced": false,
+        "input_types": [
+          "Message"
+        ],
+        "dynamic": false,
+        "info": "The prompt to use for the smart scraper.",
+        "title_case": false,
+        "type": "str",
+        "_input_type": "MessageTextInput"
+      },
+      "url": {
+        "tool_mode": true,
+        "trace_as_input": true,
+        "trace_as_metadata": true,
+        "load_from_db": false,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "url",
+        "value": "",
+        "display_name": "URL",
+        "advanced": false,
+        "input_types": [
+          "Message"
+        ],
+        "dynamic": false,
+        "info": "The URL to scrape.",
+        "title_case": false,
+        "type": "str",
+        "_input_type": "MessageTextInput"
+      }
+    },
+    "description": "ScrapeGraph Smart Scraper API.\n    Given a URL, it will return the structured data of the website.\n    More info at https://docs.scrapegraphai.com/services/smartscraper",
+    "base_classes": [
+      "Data"
+    ],
+    "display_name": "ScrapeGraphSmartScraperApi",
+    "documentation": "https://docs.scrapegraphai.com/introduction",
+    "minimized": false,
+    "custom_fields": {},
+    "output_types": [],
+    "pinned": false,
+    "conditional_paths": [],
+    "frozen": false,
+    "outputs": [
+      {
+        "types": [
+          "Data"
+        ],
+        "selected": "Data",
+        "name": "data",
+        "display_name": "Data",
+        "method": "scrape",
+        "value": "__UNDEFINED__",
+        "cache": true,
+        "allows_loop": false,
+        "tool_mode": true
+      }
+    ],
+    "field_order": [
+      "api_key",
+      "url",
+      "prompt"
+    ],
+    "beta": false,
+    "legacy": false,
+    "edited": false,
+    "metadata": {},
+    "tool_mode": false
+  },
+  "ScrapeGraphSearchApi": {
+    "template": {
+      "_type": "Component",
+      "api_key": {
+        "load_from_db": true,
+        "required": true,
+        "placeholder": "",
+        "show": true,
+        "name": "api_key",
+        "value": "",
+        "display_name": "ScrapeGraph API Key",
+        "advanced": false,
+        "input_types": [],
+        "dynamic": false,
+        "info": "The API key to use ScrapeGraph API.",
+        "title_case": false,
+        "password": true,
+        "type": "str",
+        "_input_type": "SecretStrInput"
+      },
+      "code": {
+        "type": "code",
+        "required": true,
+        "placeholder": "",
+        "list": false,
+        "show": true,
+        "multiline": true,
+        "value": "from langflow.custom import Component\nfrom langflow.io import (\n    MessageTextInput,\n    Output,\n    SecretStrInput,\n)\nfrom langflow.schema import Data\n\n\nclass ScrapeGraphSearchApi(Component):\n    display_name: str = \"ScrapeGraphSearchApi\"\n    description: str = \"\"\"ScrapeGraph Search API.\n    Given a search prompt, it will return search results using ScrapeGraph's search functionality.\n    More info at https://docs.scrapegraphai.com/services/searchscraper\"\"\"\n    name = \"ScrapeGraphSearchApi\"\n\n    documentation: str = \"https://docs.scrapegraphai.com/introduction\"\n    icon = \"ScrapeGraph\"\n\n    inputs = [\n        SecretStrInput(\n            name=\"api_key\",\n            display_name=\"ScrapeGraph API Key\",\n            required=True,\n            password=True,\n            info=\"The API key to use ScrapeGraph API.\",\n        ),\n        MessageTextInput(\n            name=\"user_prompt\",\n            display_name=\"Search Prompt\",\n            tool_mode=True,\n            info=\"The search prompt to use.\",\n        ),\n    ]\n\n    outputs = [\n        Output(display_name=\"Data\", name=\"data\", method=\"search\"),\n    ]\n\n    def search(self) -> list[Data]:\n        try:\n            from scrapegraph_py import Client\n            from scrapegraph_py.logger import sgai_logger\n        except ImportError as e:\n            msg = \"Could not import scrapegraph-py package. Please install it with `pip install scrapegraph-py`.\"\n            raise ImportError(msg) from e\n\n        # Set logging level\n        sgai_logger.set_logging(level=\"INFO\")\n\n        # Initialize the client with API key\n        sgai_client = Client(api_key=self.api_key)\n\n        try:\n            # SearchScraper request\n            response = sgai_client.searchscraper(\n                user_prompt=self.user_prompt,\n            )\n\n            # Close the client\n            sgai_client.close()\n\n            return Data(data=response)\n        except Exception:\n            sgai_client.close()\n            raise\n",
+        "fileTypes": [],
+        "file_path": "",
+        "password": false,
+        "name": "code",
+        "advanced": true,
+        "dynamic": true,
+        "info": "",
+        "load_from_db": false,
+        "title_case": false
+      },
+      "user_prompt": {
+        "tool_mode": true,
+        "trace_as_input": true,
+        "trace_as_metadata": true,
+        "load_from_db": false,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "user_prompt",
+        "value": "",
+        "display_name": "Search Prompt",
+        "advanced": false,
+        "input_types": [
+          "Message"
+        ],
+        "dynamic": false,
+        "info": "The search prompt to use.",
+        "title_case": false,
+        "type": "str",
+        "_input_type": "MessageTextInput"
+      }
+    },
+    "description": "ScrapeGraph Search API.\n    Given a search prompt, it will return search results using ScrapeGraph's search functionality.\n    More info at https://docs.scrapegraphai.com/services/searchscraper",
+    "icon": "ScrapeGraph",
+    "base_classes": [
+      "Data"
+    ],
+    "display_name": "ScrapeGraphSearchApi",
+    "documentation": "https://docs.scrapegraphai.com/introduction",
+    "minimized": false,
+    "custom_fields": {},
+    "output_types": [],
+    "pinned": false,
+    "conditional_paths": [],
+    "frozen": false,
+    "outputs": [
+      {
+        "types": [
+          "Data"
+        ],
+        "selected": "Data",
+        "name": "data",
+        "display_name": "Data",
+        "method": "search",
+        "value": "__UNDEFINED__",
+        "cache": true,
+        "allows_loop": false,
+        "tool_mode": true
+      }
+    ],
+    "field_order": [
+      "api_key",
+      "user_prompt"
+    ],
+    "beta": false,
+    "legacy": false,
+    "edited": false,
+    "metadata": {},
+    "tool_mode": false
+  }
+}

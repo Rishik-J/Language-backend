@@ -1,0 +1,298 @@
+{
+  "ListHomeAssistantStates": {
+    "template": {
+      "_type": "Component",
+      "base_url": {
+        "tool_mode": false,
+        "trace_as_metadata": true,
+        "load_from_db": false,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": true,
+        "placeholder": "",
+        "show": true,
+        "name": "base_url",
+        "value": "",
+        "display_name": "Home Assistant URL",
+        "advanced": false,
+        "dynamic": false,
+        "info": "e.g., http://192.168.0.10:8123",
+        "title_case": false,
+        "type": "str",
+        "_input_type": "StrInput"
+      },
+      "code": {
+        "type": "code",
+        "required": true,
+        "placeholder": "",
+        "list": false,
+        "show": true,
+        "multiline": true,
+        "value": "import json\nfrom typing import Any\n\nimport requests\nfrom langchain.tools import StructuredTool\nfrom pydantic import BaseModel, Field\n\nfrom langflow.base.langchain_utilities.model import LCToolComponent\nfrom langflow.field_typing import Tool\nfrom langflow.inputs import SecretStrInput, StrInput\nfrom langflow.schema import Data\n\n\nclass ListHomeAssistantStates(LCToolComponent):\n    display_name: str = \"List HomeAssistant States\"\n    description: str = (\n        \"Retrieve states from Home Assistant. \"\n        \"The agent only needs to specify 'filter_domain' (optional). \"\n        \"Token and base_url are not exposed to the agent.\"\n    )\n    documentation: str = \"https://developers.home-assistant.io/docs/api/rest/\"\n    icon = \"HomeAssistant\"\n\n    # 1) Define fields to be received in LangFlow UI\n    inputs = [\n        SecretStrInput(\n            name=\"ha_token\",\n            display_name=\"Home Assistant Token\",\n            info=\"Home Assistant Long-Lived Access Token\",\n            required=True,\n        ),\n        StrInput(\n            name=\"base_url\",\n            display_name=\"Home Assistant URL\",\n            info=\"e.g., http://192.168.0.10:8123\",\n            required=True,\n        ),\n        StrInput(\n            name=\"filter_domain\",\n            display_name=\"Default Filter Domain (Optional)\",\n            info=\"light, switch, sensor, etc. (Leave empty to fetch all)\",\n            required=False,\n        ),\n    ]\n\n    # 2) Pydantic schema containing only parameters exposed to the agent\n    class ToolSchema(BaseModel):\n        \"\"\"Parameters to be passed by the agent: filter_domain only.\"\"\"\n\n        filter_domain: str = Field(\"\", description=\"Filter domain (e.g., 'light'). If empty, returns all.\")\n\n    def run_model(self) -> Data:\n        \"\"\"Execute the LangFlow component.\n\n        Uses self.ha_token, self.base_url, self.filter_domain as entered in the UI.\n        Triggered when 'Run' is clicked directly without an agent.\n        \"\"\"\n        filter_domain = self.filter_domain or \"\"  # Use \"\" for fetching all states\n        result = self._list_states(\n            ha_token=self.ha_token,\n            base_url=self.base_url,\n            filter_domain=filter_domain,\n        )\n        return self._make_data_response(result)\n\n    def build_tool(self) -> Tool:\n        \"\"\"Build a tool object to be used by the agent.\n\n        The agent can only pass 'filter_domain' as a parameter.\n        'ha_token' and 'base_url' are not exposed (stored as self attributes).\n        \"\"\"\n        return StructuredTool.from_function(\n            name=\"list_homeassistant_states\",\n            description=(\n                \"Retrieve states from Home Assistant. \"\n                \"You can provide filter_domain='light', 'switch', etc. to narrow results.\"\n            ),\n            func=self._list_states_for_tool,  # Wrapper function below\n            args_schema=self.ToolSchema,  # Requires only filter_domain\n        )\n\n    def _list_states_for_tool(self, filter_domain: str = \"\") -> list[Any] | str:\n        \"\"\"Execute the tool when called by the agent.\n\n        'ha_token' and 'base_url' are stored in self (not exposed).\n        \"\"\"\n        return self._list_states(\n            ha_token=self.ha_token,\n            base_url=self.base_url,\n            filter_domain=filter_domain,\n        )\n\n    def _list_states(\n        self,\n        ha_token: str,\n        base_url: str,\n        filter_domain: str = \"\",\n    ) -> list[Any] | str:\n        \"\"\"Call the Home Assistant /api/states endpoint.\"\"\"\n        try:\n            headers = {\n                \"Authorization\": f\"Bearer {ha_token}\",\n                \"Content-Type\": \"application/json\",\n            }\n            url = f\"{base_url}/api/states\"\n            response = requests.get(url, headers=headers, timeout=10)\n            response.raise_for_status()\n\n            all_states = response.json()\n            if filter_domain:\n                return [st for st in all_states if st.get(\"entity_id\", \"\").startswith(f\"{filter_domain}.\")]\n\n        except requests.exceptions.RequestException as e:\n            return f\"Error: Failed to fetch states. {e}\"\n        except (ValueError, TypeError) as e:\n            return f\"Error processing response: {e}\"\n        return all_states\n\n    def _make_data_response(self, result: list[Any] | str | dict) -> Data:\n        \"\"\"Format the response into a Data object.\"\"\"\n        try:\n            if isinstance(result, list):\n                # Wrap list data into a dictionary and convert to text\n                wrapped_result = {\"result\": result}\n                return Data(data=wrapped_result, text=json.dumps(wrapped_result, indent=2, ensure_ascii=False))\n            if isinstance(result, dict):\n                # Return dictionary as-is\n                return Data(data=result, text=json.dumps(result, indent=2, ensure_ascii=False))\n            if isinstance(result, str):\n                # Return error messages or strings\n                return Data(data={}, text=result)\n\n            # Handle unexpected data types\n            return Data(data={}, text=\"Error: Unexpected response format.\")\n        except (TypeError, ValueError) as e:\n            # Handle specific exceptions during formatting\n            return Data(data={}, text=f\"Error: Failed to process response. Details: {e!s}\")\n",
+        "fileTypes": [],
+        "file_path": "",
+        "password": false,
+        "name": "code",
+        "advanced": true,
+        "dynamic": true,
+        "info": "",
+        "load_from_db": false,
+        "title_case": false
+      },
+      "filter_domain": {
+        "tool_mode": false,
+        "trace_as_metadata": true,
+        "load_from_db": false,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "filter_domain",
+        "value": "",
+        "display_name": "Default Filter Domain (Optional)",
+        "advanced": false,
+        "dynamic": false,
+        "info": "light, switch, sensor, etc. (Leave empty to fetch all)",
+        "title_case": false,
+        "type": "str",
+        "_input_type": "StrInput"
+      },
+      "ha_token": {
+        "load_from_db": true,
+        "required": true,
+        "placeholder": "",
+        "show": true,
+        "name": "ha_token",
+        "value": "",
+        "display_name": "Home Assistant Token",
+        "advanced": false,
+        "input_types": [],
+        "dynamic": false,
+        "info": "Home Assistant Long-Lived Access Token",
+        "title_case": false,
+        "password": true,
+        "type": "str",
+        "_input_type": "SecretStrInput"
+      }
+    },
+    "description": "Retrieve states from Home Assistant. The agent only needs to specify 'filter_domain' (optional). Token and base_url are not exposed to the agent.",
+    "icon": "HomeAssistant",
+    "base_classes": [
+      "Data",
+      "Tool"
+    ],
+    "display_name": "List HomeAssistant States",
+    "documentation": "https://developers.home-assistant.io/docs/api/rest/",
+    "minimized": false,
+    "custom_fields": {},
+    "output_types": [],
+    "pinned": false,
+    "conditional_paths": [],
+    "frozen": false,
+    "outputs": [
+      {
+        "types": [
+          "Data"
+        ],
+        "selected": "Data",
+        "name": "api_run_model",
+        "display_name": "Data",
+        "method": "run_model",
+        "value": "__UNDEFINED__",
+        "cache": true,
+        "required_inputs": [
+          "base_url",
+          "ha_token"
+        ],
+        "allows_loop": false,
+        "tool_mode": true
+      },
+      {
+        "types": [
+          "Tool"
+        ],
+        "selected": "Tool",
+        "name": "api_build_tool",
+        "display_name": "Tool",
+        "method": "build_tool",
+        "value": "__UNDEFINED__",
+        "cache": true,
+        "required_inputs": [
+          "base_url",
+          "ha_token"
+        ],
+        "allows_loop": false,
+        "tool_mode": true
+      }
+    ],
+    "field_order": [
+      "ha_token",
+      "base_url",
+      "filter_domain"
+    ],
+    "beta": false,
+    "legacy": false,
+    "edited": false,
+    "metadata": {},
+    "tool_mode": false
+  },
+  "HomeAssistantControl": {
+    "template": {
+      "_type": "Component",
+      "base_url": {
+        "tool_mode": false,
+        "trace_as_metadata": true,
+        "load_from_db": false,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": true,
+        "placeholder": "",
+        "show": true,
+        "name": "base_url",
+        "value": "",
+        "display_name": "Home Assistant URL",
+        "advanced": false,
+        "dynamic": false,
+        "info": "e.g., http://192.168.0.10:8123",
+        "title_case": false,
+        "type": "str",
+        "_input_type": "StrInput"
+      },
+      "code": {
+        "type": "code",
+        "required": true,
+        "placeholder": "",
+        "list": false,
+        "show": true,
+        "multiline": true,
+        "value": "import json\nfrom typing import Any\n\nimport requests\nfrom langchain.tools import StructuredTool\nfrom pydantic import BaseModel, Field\n\nfrom langflow.base.langchain_utilities.model import LCToolComponent\nfrom langflow.field_typing import Tool\nfrom langflow.inputs import SecretStrInput, StrInput\nfrom langflow.schema import Data\n\n\nclass HomeAssistantControl(LCToolComponent):\n    \"\"\"This tool is used to control Home Assistant devices.\n\n    A very simple tool to control Home Assistant devices.\n    - The agent only needs to provide action (turn_on, turn_off, toggle) + entity_id (e.g., switch.xxx, light.xxx).\n    - The domain (e.g., 'switch', 'light') is automatically extracted from entity_id.\n    \"\"\"\n\n    display_name: str = \"Home Assistant Control\"\n    description: str = (\n        \"A very simple tool to control Home Assistant devices. \"\n        \"Only action (turn_on, turn_off, toggle) and entity_id need to be provided.\"\n    )\n    documentation: str = \"https://developers.home-assistant.io/docs/api/rest/\"\n    icon: str = \"HomeAssistant\"\n\n    # --- Input fields for LangFlow UI (token, URL) ---\n    inputs = [\n        SecretStrInput(\n            name=\"ha_token\",\n            display_name=\"Home Assistant Token\",\n            info=\"Home Assistant Long-Lived Access Token\",\n            required=True,\n        ),\n        StrInput(\n            name=\"base_url\",\n            display_name=\"Home Assistant URL\",\n            info=\"e.g., http://192.168.0.10:8123\",\n            required=True,\n        ),\n        StrInput(\n            name=\"default_action\",\n            display_name=\"Default Action (Optional)\",\n            info=\"One of turn_on, turn_off, toggle\",\n            required=False,\n        ),\n        StrInput(\n            name=\"default_entity_id\",\n            display_name=\"Default Entity ID (Optional)\",\n            info=\"Default entity ID to control (e.g., switch.unknown_switch_3)\",\n            required=False,\n        ),\n    ]\n\n    # --- Parameters exposed to the agent (Pydantic schema) ---\n    class ToolSchema(BaseModel):\n        \"\"\"Parameters to be passed by the agent: action, entity_id only.\"\"\"\n\n        action: str = Field(..., description=\"Home Assistant service name. (One of turn_on, turn_off, toggle)\")\n        entity_id: str = Field(\n            ...,\n            description=\"Entity ID to control (e.g., switch.xxx, light.xxx, cover.xxx, etc.).\"\n            \"Do not infer; use the list_homeassistant_states tool to retrieve it.\",\n        )\n\n    def run_model(self) -> Data:\n        \"\"\"Used when the 'Run' button is clicked in LangFlow.\n\n        - Uses default_action and default_entity_id entered in the UI.\n        \"\"\"\n        action = self.default_action or \"turn_off\"\n        entity_id = self.default_entity_id or \"switch.unknown_switch_3\"\n\n        result = self._control_device(\n            ha_token=self.ha_token,\n            base_url=self.base_url,\n            action=action,\n            entity_id=entity_id,\n        )\n        return self._make_data_response(result)\n\n    def build_tool(self) -> Tool:\n        \"\"\"Returns a tool to be used by the agent (LLM).\n\n        - The agent can only pass action and entity_id as arguments.\n        \"\"\"\n        return StructuredTool.from_function(\n            name=\"home_assistant_control\",\n            description=(\n                \"A tool to control Home Assistant devices easily. \"\n                \"Parameters: action ('turn_on'/'turn_off'/'toggle'), entity_id ('switch.xxx', etc.).\"\n                \"Entity ID must be obtained using the list_homeassistant_states tool and not guessed.\"\n            ),\n            func=self._control_device_for_tool,  # Wrapper function below\n            args_schema=self.ToolSchema,\n        )\n\n    def _control_device_for_tool(self, action: str, entity_id: str) -> dict[str, Any] | str:\n        \"\"\"Function called by the agent.\n\n        -> Internally calls _control_device.\n        \"\"\"\n        return self._control_device(\n            ha_token=self.ha_token,\n            base_url=self.base_url,\n            action=action,\n            entity_id=entity_id,\n        )\n\n    def _control_device(\n        self,\n        ha_token: str,\n        base_url: str,\n        action: str,\n        entity_id: str,\n    ) -> dict[str, Any] | str:\n        \"\"\"Actual logic to call the Home Assistant service.\n\n        The domain is extracted from the beginning of the entity_id.\n        Example: entity_id=\"switch.unknown_switch_3\" -> domain=\"switch\".\n        \"\"\"\n        try:\n            domain = entity_id.split(\".\")[0]  # switch, light, cover, etc.\n            url = f\"{base_url}/api/services/{domain}/{action}\"\n\n            headers = {\n                \"Authorization\": f\"Bearer {ha_token}\",\n                \"Content-Type\": \"application/json\",\n            }\n            payload = {\"entity_id\": entity_id}\n\n            response = requests.post(url, headers=headers, json=payload, timeout=10)\n            response.raise_for_status()\n\n            return response.json()  # HA response JSON on success\n        except requests.exceptions.RequestException as e:\n            return f\"Error: Failed to call service. {e}\"\n        except Exception as e:  # noqa: BLE001\n            return f\"An unexpected error occurred: {e}\"\n\n    def _make_data_response(self, result: dict[str, Any] | str) -> Data:\n        \"\"\"Returns a response in the LangFlow Data format.\"\"\"\n        if isinstance(result, str):\n            # Handle error messages\n            return Data(text=result)\n\n        # Convert dict to JSON string\n        formatted_json = json.dumps(result, indent=2, ensure_ascii=False)\n        return Data(data=result, text=formatted_json)\n",
+        "fileTypes": [],
+        "file_path": "",
+        "password": false,
+        "name": "code",
+        "advanced": true,
+        "dynamic": true,
+        "info": "",
+        "load_from_db": false,
+        "title_case": false
+      },
+      "default_action": {
+        "tool_mode": false,
+        "trace_as_metadata": true,
+        "load_from_db": false,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "default_action",
+        "value": "",
+        "display_name": "Default Action (Optional)",
+        "advanced": false,
+        "dynamic": false,
+        "info": "One of turn_on, turn_off, toggle",
+        "title_case": false,
+        "type": "str",
+        "_input_type": "StrInput"
+      },
+      "default_entity_id": {
+        "tool_mode": false,
+        "trace_as_metadata": true,
+        "load_from_db": false,
+        "list": false,
+        "list_add_label": "Add More",
+        "required": false,
+        "placeholder": "",
+        "show": true,
+        "name": "default_entity_id",
+        "value": "",
+        "display_name": "Default Entity ID (Optional)",
+        "advanced": false,
+        "dynamic": false,
+        "info": "Default entity ID to control (e.g., switch.unknown_switch_3)",
+        "title_case": false,
+        "type": "str",
+        "_input_type": "StrInput"
+      },
+      "ha_token": {
+        "load_from_db": true,
+        "required": true,
+        "placeholder": "",
+        "show": true,
+        "name": "ha_token",
+        "value": "",
+        "display_name": "Home Assistant Token",
+        "advanced": false,
+        "input_types": [],
+        "dynamic": false,
+        "info": "Home Assistant Long-Lived Access Token",
+        "title_case": false,
+        "password": true,
+        "type": "str",
+        "_input_type": "SecretStrInput"
+      }
+    },
+    "description": "A very simple tool to control Home Assistant devices. Only action (turn_on, turn_off, toggle) and entity_id need to be provided.",
+    "icon": "HomeAssistant",
+    "base_classes": [
+      "Data",
+      "Tool"
+    ],
+    "display_name": "Home Assistant Control",
+    "documentation": "https://developers.home-assistant.io/docs/api/rest/",
+    "minimized": false,
+    "custom_fields": {},
+    "output_types": [],
+    "pinned": false,
+    "conditional_paths": [],
+    "frozen": false,
+    "outputs": [
+      {
+        "types": [
+          "Data"
+        ],
+        "selected": "Data",
+        "name": "api_run_model",
+        "display_name": "Data",
+        "method": "run_model",
+        "value": "__UNDEFINED__",
+        "cache": true,
+        "required_inputs": [
+          "base_url",
+          "ha_token"
+        ],
+        "allows_loop": false,
+        "tool_mode": true
+      },
+      {
+        "types": [
+          "Tool"
+        ],
+        "selected": "Tool",
+        "name": "api_build_tool",
+        "display_name": "Tool",
+        "method": "build_tool",
+        "value": "__UNDEFINED__",
+        "cache": true,
+        "required_inputs": [
+          "base_url",
+          "ha_token"
+        ],
+        "allows_loop": false,
+        "tool_mode": true
+      }
+    ],
+    "field_order": [
+      "ha_token",
+      "base_url",
+      "default_action",
+      "default_entity_id"
+    ],
+    "beta": false,
+    "legacy": false,
+    "edited": false,
+    "metadata": {},
+    "tool_mode": false
+  }
+}
