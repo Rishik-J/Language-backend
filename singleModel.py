@@ -15,17 +15,30 @@ from memory.vector_store import vector_store
 # --- Request/Response models ---
 class DesignRequest(BaseModel):
     prompt: str
+    api_provider: str = "groq"  # Default to groq, can be "openai" or "groq"
 
 class DesignResponse(BaseModel):
     flow_json: Dict[str, Any]
 
-# --- Initialize OpenAI client ---
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY", ""))
+# --- Initialize API clients ---
+# OpenAI client
+openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY", ""))
+
+# GROQ client
+groq_client = OpenAI(
+    base_url="https://api.groq.com/openai/v1/",
+    api_key=os.getenv("GROQ_API_KEY", "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")
+)
 
 # --- Main RAG function ---
-async def generate_flow(prompt: str) -> Dict[str, Any]:
-    """Generate a flow using RAG pattern with a single OpenAI call"""
-    logging.info("[RAG] Generating flow for prompt")
+async def generate_flow(prompt: str, api_provider: str = "groq") -> Dict[str, Any]:
+    """Generate a flow using RAG pattern with either GROQ or OpenAI
+    
+    Args:
+        prompt: The user prompt
+        api_provider: Which API to use - "groq" or "openai"
+    """
+    logging.info(f"[RAG] Generating flow for prompt using {api_provider} API")
     
     try:
         # 1. Retrieve relevant documentation and templates from ChromaDB
@@ -287,60 +300,67 @@ Study the templates carefully to identify exact component names and valid parame
 Now, create a workflow that precisely matches the user's request using only components from the provided templates.
 """
         
-        # 5. Build payload for Responses API
+        # 5. Build payload for API
         payload = {
             "prompt": prompt,
             "documentation": doc_chunks,
             "templates": component_templates
         }
         
-        # 6. Call the OpenAI Responses API
-        response = client.responses.create(
-            model="gpt-4o-mini",  # or a more cost-effective model like "gpt-4o-mini"
-            input=[
-                {
-                    "role": "system",
-                    "content": system_prompt,
-                },
-                {
-                    "role": "user",
-                    "content": json.dumps(payload, ensure_ascii=False),
-                },
-            ],
-            text={"format": {"type": "json_object"}},
-        )
-        
-        # 7. Process the response
-        content = response.output[0].content
-        if isinstance(content, list):
-            content = content[0]
-        if hasattr(content, 'text'):
-            content = content.text
-        if isinstance(content, str):
-            parsed = json.loads(content)
+        # 6. Call the appropriate API based on the provider
+        if api_provider.lower() == "openai":
+            logging.info("[RAG] Using OpenAI Responses API")
+            response = openai_client.responses.create(
+                model="gpt-4o-mini",  # or a more cost-effective model like "gpt-4o-mini"
+                input=[
+                    {
+                        "role": "system",
+                        "content": system_prompt,
+                    },
+                    {
+                        "role": "user",
+                        "content": json.dumps(payload, ensure_ascii=False),
+                    },
+                ],
+                text={"format": {"type": "json_object"}},
+            )
+            
+            # Process the OpenAI response
+            content = response.output[0].content
+            if isinstance(content, list):
+                content = content[0]
+            if hasattr(content, 'text'):
+                content = content.text
+            if isinstance(content, str):
+                parsed = json.loads(content)
+            else:
+                parsed = content
         else:
-            parsed = content
+            # Default to GROQ
+            logging.info("[RAG] Using GROQ API")
+            chat_completion = groq_client.chat.completions.create(
+                model="gemma2-9b-it",        # Groq model
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
+                ],
+                response_format={"type": "json_object"}  # keeps JSON-only answers
+            )
+
+            # Extract the assistant's JSON text
+            content = chat_completion.choices[0].message.content
+            parsed = json.loads(content)
             
         # If the top-level keys are 'nodes' and 'edges', wrap them in 'flow_json'
-        if isinstance(parsed, dict) and "nodes" in parsed and "edges" in parsed and "flow_json" not in parsed:
+        if "flow_json" not in parsed and {"nodes", "edges"} <= parsed.keys():
             parsed = {"flow_json": parsed}
-            
+
         return parsed["flow_json"]
     
     except Exception as e:
         logging.error(f"Error generating flow: {e}", exc_info=True)
         # Simple fallback flow in case of errors
-        return {
-            "nodes": [
-                {
-                    "id": "fallback",
-                    "type": "OpenAIModel",
-                    "position": {"x": 100, "y": 100},
-                    "data": {"model_name": "gpt-4o", "temperature": 0}
-                }
-            ],
-            "edges": []
-        }
+        return {}
 
 # --- FastAPI setup ---
 @asynccontextmanager
@@ -362,9 +382,9 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 
 @app.post("/design", response_model=DesignResponse)
 async def design_workflow(request: DesignRequest):
-    logging.info("[API] /design endpoint called.")
+    logging.info(f"[API] /design endpoint called with api_provider: {request.api_provider}")
     try:
-        flow = await generate_flow(request.prompt)
+        flow = await generate_flow(request.prompt, request.api_provider)
         logging.info("[API] Successfully generated flow.")
         return DesignResponse(flow_json=flow)
     except Exception as e:

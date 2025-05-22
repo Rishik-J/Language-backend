@@ -88,7 +88,7 @@ Once ChromaDB is running, seed it with documentation and templates:
 
 2. **Run the Seeding Script**:
    ```bash
-   python3 Scripts.seed_component_docs
+   python3 -m Scripts.seed_component_docs
    ```
    This script will:
    - Initialize connection to ChromaDB
@@ -100,7 +100,7 @@ You can verify the seeding was successful by checking the logs output. Each succ
 
 If you need to check what's in the database after seeding, you can run:
 ```bash
-python3 Scripts.whatsinthedb
+python3 -m Scripts.whatsinthedb
 ```
 
 ### 7. Run the Backend Server

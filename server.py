@@ -1,580 +1,647 @@
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 from flask_cors import CORS
+import logging
+import traceback
+import json
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, 
+                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 CORS(app)
 
-trial3Json = {
-  "nodes": [
-        {
-            "id": "OpenAIModel-whU7n",
-            "type": "genericNode",
-            "position": {
-                "x": 0,
-                "y": 0
-            },
-            "data": {
-                "node": {
-                    "template": {
-                        "_type": "Component",
-                        "api_key": {
-                            "load_from_db": True,
-                            "required": True,
-                            "placeholder": "",
-                            "show": True,
-                            "name": "api_key",
-                            "value": "OPENAI_API_KEY",
-                            "display_name": "OpenAI API Key",
-                            "advanced": False,
-                            "input_types": [],
-                            "dynamic": False,
-                            "info": "The OpenAI API Key to use for the OpenAI model.",
-                            "title_case": False,
-                            "password": True,
-                            "type": "str",
-                            "_input_type": "SecretStrInput"
-                        },
-                        "code": {
-                            "type": "code",
-                            "required": True,
-                            "placeholder": "",
-                            "list": False,
-                            "show": True,
-                            "multiline": True,
-                            "value": "from typing import Any\n\nfrom langchain_openai import ChatOpenAI\nfrom pydantic.v1 import SecretStr\n\nfrom langflow.base.models.model import LCModelComponent\nfrom langflow.base.models.openai_constants import (\n    OPENAI_MODEL_NAMES,\n    OPENAI_REASONING_MODEL_NAMES,\n)\nfrom langflow.field_typing import LanguageModel\nfrom langflow.field_typing.range_spec import RangeSpec\nfrom langflow.inputs import BoolInput, DictInput, DropdownInput, IntInput, SecretStrInput, SliderInput, StrInput\nfrom langflow.logging import logger\n\n\nclass OpenAIModelComponent(LCModelComponent):\n    display_name = \"OpenAI\"\n    description = \"Generates text using OpenAI LLMs.\"\n    icon = \"OpenAI\"\n    name = \"OpenAIModel\"\n\n    inputs = [\n        *LCModelComponent._base_inputs,\n        IntInput(\n            name=\"max_tokens\",\n            display_name=\"Max Tokens\",\n            advanced=True,\n            info=\"The maximum number of tokens to generate. Set to 0 for unlimited tokens.\",\n            range_spec=RangeSpec(min=0, max=128000),\n        ),\n        DictInput(\n            name=\"model_kwargs\",\n            display_name=\"Model Kwargs\",\n            advanced=True,\n            info=\"Additional keyword arguments to pass to the model.\",\n        ),\n        BoolInput(\n            name=\"json_mode\",\n            display_name=\"JSON Mode\",\n            advanced=True,\n            info=\"If True, it will output JSON regardless of passing a schema.\",\n        ),\n        DropdownInput(\n            name=\"model_name\",\n            display_name=\"Model Name\",\n            advanced=False,\n            options=OPENAI_MODEL_NAMES + OPENAI_REASONING_MODEL_NAMES,\n            value=OPENAI_MODEL_NAMES[1],\n            combobox=True,\n            real_time_refresh=True,\n        ),\n        StrInput(\n            name=\"openai_api_base\",\n            display_name=\"OpenAI API Base\",\n            advanced=True,\n            info=\"The base URL of the OpenAI API. \"\n            \"Defaults to https://api.openai.com/v1. \"\n            \"You can change this to use other APIs like JinaChat, LocalAI and Prem.\",\n        ),\n        SecretStrInput(\n            name=\"api_key\",\n            display_name=\"OpenAI API Key\",\n            info=\"The OpenAI API Key to use for the OpenAI model.\",\n            advanced=False,\n            value=\"OPENAI_API_KEY\",\n            required=True,\n        ),\n        SliderInput(\n            name=\"temperature\",\n            display_name=\"Temperature\",\n            value=0.1,\n            range_spec=RangeSpec(min=0, max=1, step=0.01),\n            show=True,\n        ),\n        IntInput(\n            name=\"seed\",\n            display_name=\"Seed\",\n            info=\"The seed controls the reproducibility of the job.\",\n            advanced=True,\n            value=1,\n        ),\n        IntInput(\n            name=\"max_retries\",\n            display_name=\"Max Retries\",\n            info=\"The maximum number of retries to make when generating.\",\n            advanced=True,\n            value=5,\n        ),\n        IntInput(\n            name=\"timeout\",\n            display_name=\"Timeout\",\n            info=\"The timeout for requests to OpenAI completion API.\",\n            advanced=True,\n            value=700,\n        ),\n    ]\n\n    def build_model(self) -> LanguageModel:  # type: ignore[type-var]\n        parameters = {\n            \"api_key\": SecretStr(self.api_key).get_secret_value() if self.api_key else None,\n            \"model_name\": self.model_name,\n            \"max_tokens\": self.max_tokens or None,\n            \"model_kwargs\": self.model_kwargs or {},\n            \"base_url\": self.openai_api_base or \"https://api.openai.com/v1\",\n            \"seed\": self.seed,\n            \"max_retries\": self.max_retries,\n            \"timeout\": self.timeout,\n            \"temperature\": self.temperature if self.temperature is not None else 0.1,\n        }\n\n        logger.info(f\"Model name: {self.model_name}\")\n        if self.model_name in OPENAI_REASONING_MODEL_NAMES:\n            logger.info(\"Getting reasoning model parameters\")\n            parameters.pop(\"temperature\")\n            parameters.pop(\"seed\")\n        output = ChatOpenAI(**parameters)\n        if self.json_mode:\n            output = output.bind(response_format={\"type\": \"json_object\"})\n\n        return output\n\n    def _get_exception_message(self, e: Exception):\n        \"\"\"Get a message from an OpenAI exception.\n\n        Args:\n            e (Exception): The exception to get the message from.\n\n        Returns:\n            str: The message from the exception.\n        \"\"\"\n        try:\n            from openai import BadRequestError\n        except ImportError:\n            return None\n        if isinstance(e, BadRequestError):\n            message = e.body.get(\"message\")\n            if message:\n                return message\n        return None\n\n    def update_build_config(self, build_config: dict, field_value: Any, field_name: str | None = None) -> dict:\n        if field_name in {\"base_url\", \"model_name\", \"api_key\"} and field_value in OPENAI_REASONING_MODEL_NAMES:\n            build_config[\"temperature\"][\"show\"] = False\n            build_config[\"seed\"][\"show\"] = False\n        if field_name in {\"base_url\", \"model_name\", \"api_key\"} and field_value in OPENAI_MODEL_NAMES:\n            build_config[\"temperature\"][\"show\"] = True\n            build_config[\"seed\"][\"show\"] = True\n        return build_config\n",
-                            "fileTypes": [],
-                            "file_path": "",
-                            "password": False,
-                            "name": "code",
-                            "advanced": True,
-                            "dynamic": True,
-                            "info": "",
-                            "load_from_db": False,
-                            "title_case": False
-                        },
-                        "input_value": {
-                            "trace_as_input": True,
-                            "tool_mode": False,
-                            "trace_as_metadata": True,
-                            "load_from_db": False,
-                            "list": False,
-                            "list_add_label": "Add More",
-                            "required": False,
-                            "placeholder": "",
-                            "show": True,
-                            "name": "input_value",
-                            "value": "",
-                            "display_name": "Input",
-                            "advanced": False,
-                            "input_types": [
-                                "Message"
-                            ],
-                            "dynamic": False,
-                            "info": "",
-                            "title_case": False,
-                            "type": "str",
-                            "_input_type": "MessageInput"
-                        },
-                        "json_mode": {
-                            "tool_mode": False,
-                            "trace_as_metadata": True,
-                            "list": False,
-                            "list_add_label": "Add More",
-                            "required": False,
-                            "placeholder": "",
-                            "show": True,
-                            "name": "json_mode",
-                            "value": False,
-                            "display_name": "JSON Mode",
-                            "advanced": True,
-                            "dynamic": False,
-                            "info": "If True, it will output JSON regardless of passing a schema.",
-                            "title_case": False,
-                            "type": "bool",
-                            "_input_type": "BoolInput"
-                        },
-                        "max_retries": {
-                            "tool_mode": False,
-                            "trace_as_metadata": True,
-                            "list": False,
-                            "list_add_label": "Add More",
-                            "required": False,
-                            "placeholder": "",
-                            "show": True,
-                            "name": "max_retries",
-                            "value": 5,
-                            "display_name": "Max Retries",
-                            "advanced": True,
-                            "dynamic": False,
-                            "info": "The maximum number of retries to make when generating.",
-                            "title_case": False,
-                            "type": "int",
-                            "_input_type": "IntInput"
-                        },
-                        "max_tokens": {
-                            "tool_mode": False,
-                            "trace_as_metadata": True,
-                            "range_spec": {
-                                "step_type": "float",
-                                "min": 0,
-                                "max": 128000,
-                                "step": 0.1
-                            },
-                            "list": False,
-                            "list_add_label": "Add More",
-                            "required": False,
-                            "placeholder": "",
-                            "show": True,
-                            "name": "max_tokens",
-                            "value": "",
-                            "display_name": "Max Tokens",
-                            "advanced": True,
-                            "dynamic": False,
-                            "info": "The maximum number of tokens to generate. Set to 0 for unlimited tokens.",
-                            "title_case": False,
-                            "type": "int",
-                            "_input_type": "IntInput"
-                        },
-                        "model_kwargs": {
-                            "tool_mode": False,
-                            "trace_as_input": True,
-                            "list": False,
-                            "list_add_label": "Add More",
-                            "required": False,
-                            "placeholder": "",
-                            "show": True,
-                            "name": "model_kwargs",
-                            "value": {},
-                            "display_name": "Model Kwargs",
-                            "advanced": True,
-                            "dynamic": False,
-                            "info": "Additional keyword arguments to pass to the model.",
-                            "title_case": False,
-                            "type": "dict",
-                            "_input_type": "DictInput"
-                        },
-                        "model_name": {
-                            "tool_mode": False,
-                            "trace_as_metadata": True,
-                            "options": [
-                                "gpt-4o-mini",
-                                "gpt-4o",
-                                "gpt-4.1",
-                                "gpt-4.1-mini",
-                                "gpt-4.1-nano",
-                                "gpt-4.5-preview",
-                                "gpt-4-turbo",
-                                "gpt-4-turbo-preview",
-                                "gpt-4",
-                                "gpt-3.5-turbo",
-                                "o1"
-                            ],
-                            "options_metadata": [],
-                            "combobox": True,
-                            "dialog_inputs": {},
-                            "toggle": False,
-                            "required": False,
-                            "placeholder": "",
-                            "show": True,
-                            "name": "model_name",
-                            "value": "gpt-4o",
-                            "display_name": "Model Name",
-                            "advanced": False,
-                            "dynamic": False,
-                            "info": "",
-                            "real_time_refresh": True,
-                            "title_case": False,
-                            "type": "str",
-                            "_input_type": "DropdownInput"
-                        },
-                        "openai_api_base": {
-                            "tool_mode": False,
-                            "trace_as_metadata": True,
-                            "load_from_db": False,
-                            "list": False,
-                            "list_add_label": "Add More",
-                            "required": False,
-                            "placeholder": "",
-                            "show": True,
-                            "name": "openai_api_base",
-                            "value": "",
-                            "display_name": "OpenAI API Base",
-                            "advanced": True,
-                            "dynamic": False,
-                            "info": "The base URL of the OpenAI API. Defaults to https://api.openai.com/v1. You can change this to use other APIs like JinaChat, LocalAI and Prem.",
-                            "title_case": False,
-                            "type": "str",
-                            "_input_type": "StrInput"
-                        },
-                        "seed": {
-                            "tool_mode": False,
-                            "trace_as_metadata": True,
-                            "list": False,
-                            "list_add_label": "Add More",
-                            "required": False,
-                            "placeholder": "",
-                            "show": True,
-                            "name": "seed",
-                            "value": 1,
-                            "display_name": "Seed",
-                            "advanced": True,
-                            "dynamic": False,
-                            "info": "The seed controls the reproducibility of the job.",
-                            "title_case": False,
-                            "type": "int",
-                            "_input_type": "IntInput"
-                        },
-                        "stream": {
-                            "tool_mode": False,
-                            "trace_as_metadata": True,
-                            "list": False,
-                            "list_add_label": "Add More",
-                            "required": False,
-                            "placeholder": "",
-                            "show": True,
-                            "name": "stream",
-                            "value": False,
-                            "display_name": "Stream",
-                            "advanced": True,
-                            "dynamic": False,
-                            "info": "Stream the response from the model. Streaming works only in Chat.",
-                            "title_case": False,
-                            "type": "bool",
-                            "_input_type": "BoolInput"
-                        },
-                        "system_message": {
-                            "tool_mode": False,
-                            "trace_as_input": True,
-                            "multiline": True,
-                            "trace_as_metadata": True,
-                            "load_from_db": False,
-                            "list": False,
-                            "list_add_label": "Add More",
-                            "required": False,
-                            "placeholder": "",
-                            "show": True,
-                            "name": "system_message",
-                            "value": "",
-                            "display_name": "System Message",
-                            "advanced": False,
-                            "input_types": [
-                                "Message"
-                            ],
-                            "dynamic": False,
-                            "info": "System message to pass to the model.",
-                            "title_case": False,
-                            "copy_field": False,
-                            "type": "str",
-                            "_input_type": "MultilineInput"
-                        },
-                        "temperature": {
-                            "tool_mode": False,
-                            "min_label": "",
-                            "max_label": "",
-                            "min_label_icon": "",
-                            "max_label_icon": "",
-                            "slider_buttons": False,
-                            "slider_buttons_options": [],
-                            "slider_input": False,
-                            "range_spec": {
-                                "step_type": "float",
-                                "min": 0,
-                                "max": 1,
-                                "step": 0.01
-                            },
-                            "required": False,
-                            "placeholder": "",
-                            "show": True,
-                            "name": "temperature",
-                            "value": 0.1,
-                            "display_name": "Temperature",
-                            "advanced": False,
-                            "dynamic": False,
-                            "info": "",
-                            "title_case": False,
-                            "type": "slider",
-                            "_input_type": "SliderInput"
-                        },
-                        "timeout": {
-                            "tool_mode": False,
-                            "trace_as_metadata": True,
-                            "list": False,
-                            "list_add_label": "Add More",
-                            "required": False,
-                            "placeholder": "",
-                            "show": True,
-                            "name": "timeout",
-                            "value": 700,
-                            "display_name": "Timeout",
-                            "advanced": True,
-                            "dynamic": False,
-                            "info": "The timeout for requests to OpenAI completion API.",
-                            "title_case": False,
-                            "type": "int",
-                            "_input_type": "IntInput"
-                        }
-                    },
-                    "description": "Generates text using OpenAI LLMs.",
-                    "icon": "OpenAI",
-                    "base_classes": [
-                        "LanguageModel",
-                        "Message"
-                    ],
-                    "display_name": "OpenAI",
-                    "documentation": "",
-                    "minimized": False,
-                    "custom_fields": {},
-                    "output_types": [],
-                    "pinned": False,
-                    "conditional_paths": [],
-                    "frozen": False,
-                    "outputs": [
-                        {
-                            "types": [
-                                "Message"
-                            ],
-                            "selected": "Message",
-                            "name": "text_output",
-                            "display_name": "Message",
-                            "method": "text_response",
-                            "value": "__UNDEFINED__",
-                            "cache": True,
-                            "required_inputs": [],
-                            "allows_loop": False,
-                            "tool_mode": True
-                        },
-                        {
-                            "types": [
-                                "LanguageModel"
-                            ],
-                            "selected": "LanguageModel",
-                            "name": "model_output",
-                            "display_name": "Language Model",
-                            "method": "build_model",
-                            "value": "__UNDEFINED__",
-                            "cache": True,
-                            "required_inputs": [
-                                "api_key"
-                            ],
-                            "allows_loop": False,
-                            "tool_mode": True
-                        }
-                    ],
-                    "field_order": [
-                        "input_value",
-                        "system_message",
-                        "stream",
-                        "max_tokens",
-                        "model_kwargs",
-                        "json_mode",
-                        "model_name",
-                        "openai_api_base",
-                        "api_key",
-                        "temperature",
-                        "seed",
-                        "max_retries",
-                        "timeout"
-                    ],
-                    "beta": False,
-                    "legacy": False,
-                    "edited": False,
-                    "metadata": {},
-                    "tool_mode": False,
-                    "category": "models",
-                    "key": "OpenAIModel",
-                    "score": 0.001
+trialAPIJson = {
+    "flow_json": {
+        "nodes": [
+            {
+                "id": "embedder",
+                "type": "OpenAIEmbeddings",
+                "position": {
+                    "x": 300,
+                    "y": 100
                 },
-                "showNode": True,
+                "data": {
+                    "model": "text-embedding-3-small"
+                }
+            },
+            {
+                "id": "vectorstore",
+                "type": "HCD",
+                "position": {
+                    "x": 600,
+                    "y": 100
+                },
+                "data": {
+                    "collection_name": "my_collection",
+                    "username": "hcd-superuser",
+                    "password": "HCD_PASSWORD",
+                    "api_endpoint": "HCD_API_ENDPOINT"
+                }
+            },
+            {
+                "id": "qa",
+                "type": "RetrievalQA",
+                "position": {
+                    "x": 900,
+                    "y": 100
+                },
+                "data": {
+                    "chain_type": "Stuff",
+                    "llm": "OpenAIModel",
+                    "retriever": "vectorstore"
+                }
+            },
+            {
+                "id": "llm",
                 "type": "OpenAIModel",
-                "id": "OpenAIModel-whU7n"
+                "position": {
+                    "x": 300,
+                    "y": 250
+                },
+                "data": {
+                    "model_name": "gpt-4",
+                    "temperature": 0.5
+                }
             }
-        },
-    {
-      "id": "OpenAIModel-abc123",
-      "type": "OpenAIModel",
-      "position": { "x": 500, "y": 300 },
-      "data": {
-        "type": "OpenAIModelComponent",
-        "id": "OpenAIModel-abc123",
-        "node": {
-          "display_name": "OpenAI",
-          "description": "Generates text using OpenAI LLMs.",
-          "base_classes": ["LanguageModel"],
-          "template": {
-            "api_key": {
-              "type": "str",
-              "required": True,
-              "display_name": "OpenAI API Key",
-              "value": ""
+        ],
+        "edges": [
+            {
+                "id": "e1",
+                "source": "embedder",
+                "target": "vectorstore"
             },
-            "model_name": {
-              "type": "str",
-              "required": True,
-              "display_name": "Model Name",
-              "value": "gpt-4o"
+            {
+                "id": "e2",
+                "source": "vectorstore",
+                "target": "qa"
             },
-            "temperature": {
-              "type": "float",
-              "required": False,
-              "display_name": "Temperature",
-              "value": 0.1
-            },
-            "input_value": {
-              "type": "str",
-              "display_name": "Input",
-              "value": ""
-            },
-            "system_message": {
-              "type": "str",
-              "display_name": "System Message",
-              "value": ""
+            {
+                "id": "e3",
+                "source": "llm",
+                "target": "qa"
             }
-          }
-        }
-      }
+        ]
     }
-  ],
-  "edges": [
-    {
-      "id": "edge-ChatInput-xyz789-to-OpenAIModel-abc123",
-      "source": "ChatInput-xyz789",
-      "target": "OpenAIModel-abc123",
-      "sourceHandle": "{œdataTypeœ:œChatInputComponentœ,œidœ:œChatInput-xyz789œ,œnameœ:œmessageœ,œoutput_typesœ:[œMessageœ]}",
-      "targetHandle": "{œfieldNameœ:œinput_valueœ,œidœ:œOpenAIModel-abc123œ,œinputTypesœ:[œMessageœ],œtypeœ:œstrœ}",
-      "data": {
-        "sourceHandle": {
-          "dataType": "ChatInputComponent",
-          "id": "ChatInput-xyz789",
-          "name": "message", 
-          "output_types": ["Message"]
-        },
-        "targetHandle": {
-          "fieldName": "input_value",
-          "id": "OpenAIModel-abc123",
-          "inputTypes": ["Message"],
-          "type": "str"
-        }
-      }
-    }
-  ]
 }
+# trialAPIJson = {
+#         "nodes": [
+#             {
+#                 "id": "embedder",
+#                 "type": "OpenAIEmbeddings",
+#                 "position": {
+#                     "x": 400,
+#                     "y": 100
+#                 },
+#                 "data": {
+#                     "model": "text-embedding-3-small"
+#                 }
+#             },
+#             {
+#                 "id": "vectorstore",
+#                 "type": "HCD",
+#                 "position": {
+#                     "x": 700,
+#                     "y": 100
+#                 },
+#                 "data": {
+#                     "collection_name": "my_collection",
+#                     "username": "hcd-superuser",
+#                     "password": "HCD_PASSWORD",
+#                     "api_endpoint": "HCD_API_ENDPOINT"
+#                 }
+#             },
+#             {
+#                 "id": "retrieval_qa",
+#                 "type": "RetrievalQA",
+#                 "position": {
+#                     "x": 1000,
+#                     "y": 100
+#                 },
+#                 "data": {
+#                     "llm": "OpenAIModel",
+#                     "retriever": "vectorstore"
+#                 }
+#             }
+#         ],
+#         "edges": [
+#             {
+#                 "id": "e1",
+#                 "source": "embedder",
+#                 "target": "vectorstore"
+#             },
+#             {
+#                 "id": "e2",
+#                 "source": "vectorstore",
+#                 "target": "retrieval_qa"
+#             }
+#         ]
+#     }
 
-trial2Json = {
+trial8Json = {
   "nodes": [
-      {
-      "id": "node-1",
-      "type": "ChatInput", # This can be either "ChatInput" or "genericNode" with type: "ChatInput" in data
+    {
+      "id": "loader",
+      "type": "GitLoaderComponent",
       "position": { "x": 100, "y": 100 },
       "data": {
-        "label": "Chat Input Node",
-        "type": "ChatInput",
-        "id": "node-1",
-        "node": {
-          "template": {
-            "input_text": {
-              "type": "string",
-              "value": "Hello, how can I help you?"
-            },
-            "input_value": {  # This is the critical field that creates the text input
-              "type": "string",
-              "value": "",
-              "display_name": "Text",
-              "multiline": True
-            },
-            "should_store_message": {
-              "type": "boolean",
-              "value": True
-            },
-            "sender": {
-              "type": "string",
-              "value": "User"
-            }
-          },
-          "description": "Get chat inputs from the Playground.",
-          "icon": "MessagesSquare",
-          "base_classes": ["Message"],
-          "display_name": "Chat Input",
-          "outputs": [
-            {
-              "types": ["Message"],
-              "selected": "Message",
-              "name": "message",
-              "display_name": "Message",
-              "method": "message_response",
-              "value": "__UNDEFINED__",
-              "cache": True,
-              "allows_loop": False,
-              "tool_mode": True
-            }
-          ],
-          "field_order": ["input_value", "should_store_message", "sender"]
-        }
+        "repo_source": "Remote",
+        "clone_url": "https://github.com/my-org/annual-report.git",
+        "branch": "main",
+        "file_filter": "*.md"
       }
     },
     {
-      "id": "node-2",
-      "type": "genericNode",
-      "position": { "x": 400, "y": 100 },
+      "id": "splitter",
+      "type": "RecursiveCharacterTextSplitter",
+      "position": { "x": 500, "y": 500 },
       "data": {
-        "label": "Chat Output Node",
-        "type": "ChatOutput",
-        "id": "node-2",
-        "node": {
-          "template": {
-            "input_value": {
-              "type": "Message",
-              "value": "",
-              "required": True,
-              "display_name": "Input"
-            },
-            "output_text": {
-              "type": "string",
-              "value": "Sure, let me assist you with that."
-            }
-          },
-          "description": "Display a chat message in the Playground.",
-          "icon": "MessagesSquare",
-          "base_classes": ["Message"],
-          "display_name": "Chat Output",
-          "field_order": ["input_value", "should_store_message"]
-        }
+        "chunk_size": 1000,
+        "chunk_overlap": 200
+      }
+    },
+    {
+      "id": "embedder",
+      "type": "OpenAIEmbeddings",
+      "position": { "x": 1000, "y": 1000 },
+      "data": {
+        "model": "text-embedding-3-small"
+      }
+    },
+    {
+      "id": "store",
+      "type": "Chroma",
+      "position": { "x": 1700, "y": 1500 },
+      "data": {
+        "collection_name": "annual_report_index",
+        "persist_directory": "./chroma_store",
+        "search_type": "similarity",
+        "number_of_results": 10,
+      }
+    },
+    {
+      "id": "llm",
+      "type": "OpenAIModel",
+      "position": { "x": 300, "y": 300 },
+      "data": {
+        "model_name": "gpt-4o",
+        "temperature": 0.0
+      }
+    },
+    {
+      "id": "memory",
+      "type": "Memory",
+      "position": { "x": 500, "y": 300 },
+      "data": {}
+    },
+    {
+      "id": "qa",
+      "type": "RetrievalQA",
+      "position": { "x": 700, "y": 300 },
+      "data": {
+        "input_value": "What are the key insights from the annual report?",
+        "chain_type": "Stuff"
+      }
+    }
+  ],
+  "edges": [
+    { "id": "e1", "source": "loader",   "target": "splitter" },
+    { "id": "e2", "source": "splitter", "target": "embedder" },
+    { "id": "e3", "source": "embedder", "target": "store"    },
+    { "id": "e4", "source": "store",    "target": "qa"       },
+    { "id": "e5", "source": "llm",      "target": "qa"       },
+    { "id": "e6", "source": "memory",   "target": "qa"       }
+  ]
+}
+
+trial6Json = {
+  "nodes": [
+    {
+      "id": "node1",
+      "type": "Create List",
+      "position": { "x": 100, "y": 100 },
+      "data": {
+        "texts": [
+          "LangChain is a framework for building LLM apps.",
+          "Chroma DB is a vector store for embeddings."
+        ]
+      }
+    },
+    {
+      "id": "node2",
+      "type": "OpenAIEmbeddings",
+      "position": { "x": 300, "y": 100 },
+      "data": {
+        "model": "text-embedding-3-small",
+        "chunk_size": 500
+      }
+    },
+    {
+      "id": "node3",
+      "type": "Chroma",
+      "position": { "x": 500, "y": 100 },
+      "data": {
+        "collection_name": "langflow",
+        "persist_directory": "./chroma_store",
+        "search_type": "Similarity",
+        "number_of_results": 5
+      }
+    },
+    {
+      "id": "node4",
+      "type": "OpenAI",
+      "position": { "x": 700, "y": 50 },
+      "data": {
+        "model_name": "gpt-3.5-turbo",
+        "temperature": 0.1
+      }
+    },
+    {
+      "id": "node5",
+      "type": "Memory",
+      "position": { "x": 700, "y": 200 },
+      "data": {}
+    },
+    {
+      "id": "node6",
+      "type": "RetrievalQA",
+      "position": { "x": 900, "y": 100 },
+      "data": {
+        "input_value": "What is LangFlow?",
+        "chain_type": "Stuff"
       }
     }
   ],
   "edges": [
     {
-      "id": "edge-1",
-      "source": "node-1",
-      "target": "node-2",
-      "type": "smoothstep"
+      "id": "edge1",
+      "source": "node1",
+      "target": "node2"
+    },
+    {
+      "id": "edge2",
+      "source": "node1",
+      "target": "node3"
+    },
+    {
+      "id": "edge3",
+      "source": "node2",
+      "target": "node3"
+    },
+    {
+      "id": "edge4",
+      "source": "node3",
+      "target": "node6"
+    },
+    {
+      "id": "edge5",
+      "source": "node4",
+      "target": "node6"
+    },
+    {
+      "id": "edge6",
+      "source": "node5",
+      "target": "node6"
     }
   ]
 }
 
-trial1Json = {
-    "nodes": [
+
+complexFLow = {
+  "nodes": [
     {
-      "id": "node-1",
-      "type": "ChatInput",
+      "id": "node1",
+      "type": "OpenAIEmbeddings",
+      "position": { "x": 100, "y": 100 },
       "data": {
-        "label": "Chat Input Node",
-        "node": {
-          "template": {
-            "input_text": {
-              "type": "string",
-              "value": "Hello, how can I help you?"
-            }
-          }
-        }
-      },
-      "position": { "x": 100, "y": 100 }
+        "description": "Embeds input text into high-dimensional vectors via OpenAI’s embeddings API.",
+        "inputs": ["text_documents"],
+        "outputs": ["embedding_vectors"]
+      }
+    },
+    {
+      "id": "node2",
+      "type": "Chroma",
+      "position": { "x": 400, "y": 100 },
+      "data": {
+        "description": "Ingests embeddings (plus document metadata) into a Chroma vector store and performs similarity search.",
+        "inputs": ["embedding_vectors", "document_metadata"],
+        "outputs": ["retriever"]
+      }
+    },
+    {
+      "id": "node3",
+      "type": "RetrievalQA",
+      "position": { "x": 700, "y": 100 },
+      "data": {
+        "description": "Retrieval-augmented QA component: takes a Retriever (from Chroma) and an LLM internally configured, plus a user query, and returns an answer with source documents.",
+        "inputs": ["retriever", "user_query", "llm"],
+        "outputs": ["answer_text", "source_documents"]
+      }
     }
+  ],
+  "edges": [
+    { "id": "edge1", "source": "node1", "target": "node2" },
+    { "id": "edge2", "source": "node2", "target": "node3" }
+  ]
+}
+
+
+
+trial5Json = {
+"nodes": [
+{
+"id": "node1",
+"type": "OpenAIEmbeddings",
+"position": { "x": 100, "y": 100 },
+"data": {}
+},
+{
+"id": "node2",
+"type": "Chroma",
+"position": { "x": 400, "y": 100 },
+"data": {}
+}
+],
+"edges": [
+{
+"id": "edge1",
+"source": "node1",
+"target": "node2"
+}
+]
+}
+
+trial4Json = {
+    "nodes": [
+        {"id": "TextInput", "type": "OpenAIEmbeddings", "position": {"x": 0, "y": 0}, "data": {}},
+        {"id": "TextOutput", "type": "TextOutput", "position": {"x": 100, "y": 0}, "data": {}}
+    ],
+    "edges": [
+        {
+            "id": "edge-1",
+            "source": "TextInput",
+            "target": "TextOutput",
+            "type": "default",
+            # Use encodeURIComponent instead of œ replacement
+            "sourceHandle": "%7B%22dataType%22%3A%22OpenAIEmbeddings%22%2C%22id%22%3A%22TextInput%22%2C%22name%22%3A%22text%22%2C%22output_types%22%3A%5B%22str%22%5D%7D",
+            "targetHandle": "%7B%22fieldName%22%3A%22input_value%22%2C%22id%22%3A%22TextOutput%22%2C%22inputTypes%22%3A%5B%22str%22%5D%2C%22type%22%3A%22str%22%7D",
+            "data": {
+                "sourceHandle": {
+                    "dataType": "OpenAIEmbeddings",
+                    "id": "TextInput",
+                    "name": "text",
+                    "output_types": ["str"]
+                },
+                "targetHandle": {
+                    "fieldName": "input_value",
+                    "id": "TextOutput",
+                    "inputTypes": ["str"],
+                    "type": "str"
+                }
+            }
+        }
     ]
+}
+
+# Example flow data with nodes and edges
+trial3Json = {
+    "nodes": [
+        {"id": "TextInput", "type": "OpenAIEmbeddings", "position": {"x": 0, "y": 0}, "data": {}},
+        {"id": "TextOutput", "type": "TextOutput", "position": {"x": 100, "y": 0}, "data": {}}
+    ],
+    "edges": [
+        {
+            "id": "edge-1",
+            "source": "TextInput",
+            "target": "TextOutput",
+            "type": "default",
+            "data": {}
+        }
+    ]
+}
+
+import json
+from urllib.parse import quote
+
+import json
+from urllib.parse import quote
+
+def generate_edge_handles(
+    source_node_id, 
+    source_node_type, 
+    target_node_id, 
+    output_name="text",
+    output_types=["Message"],
+    target_field_name="input_value",
+    target_field_type="str",
+    input_types=None
+):
+    """
+    Generate properly encoded edge handles for React Flow edge connections.
+    
+    Args:
+        source_node_id: ID of the source node
+        source_node_type: Type of the source node
+        target_node_id: ID of the target node
+        output_name: Name of the output port (default: "text")
+        output_types: Types that this output can produce (default: ["Message"])
+        target_field_name: Name of the input field on target node (default: "input_value")
+        target_field_type: Type of the target field (default: "str")
+        input_types: Types that the target accepts (default: same as output_types)
+        
+    Returns:
+        Dict containing sourceHandle, targetHandle and data values
+    """
+    if input_types is None:
+        input_types = output_types
+    
+    # Create source handle object with explicit structure matching frontend expectations
+    source_handle = {
+        "dataType": source_node_type,
+        "id": source_node_id,
+        "name": output_name,
+        "output_types": output_types
+    }
+    
+    # Create target handle object with explicit structure matching frontend expectations
+    target_handle = {
+        "fieldName": target_field_name,
+        "id": target_node_id,
+        "inputTypes": input_types,
+        "type": target_field_type
+    }
+    
+    # Properly sort keys to match frontend's exact JSON format
+    def custom_json_dumps(obj):
+        if isinstance(obj, dict):
+            # Sort keys to ensure consistent output
+            return "{" + ",".join(f'"{k}":{custom_json_dumps(v)}' for k, v in sorted(obj.items())) + "}"
+        elif isinstance(obj, list):
+            return "[" + ",".join(custom_json_dumps(item) for item in obj) + "]"
+        elif obj is None:
+            return "null"
+        else:
+            return json.dumps(obj)
+    
+    # URL encode the JSON strings
+    source_handle_str = quote(custom_json_dumps(source_handle))
+    target_handle_str = quote(custom_json_dumps(target_handle))
+    
+    # Create edge ID from source and target info
+    edge_id = f"reactflow__edge-{source_node_id}{source_handle_str}-{target_node_id}{target_handle_str}"
+    
+    return {
+        "id": edge_id,
+        "source": source_node_id,
+        "target": target_node_id,
+        "sourceHandle": source_handle_str,
+        "targetHandle": target_handle_str,
+        "type": "default",
+        "data": {
+            "sourceHandle": source_handle,
+            "targetHandle": target_handle
+        }
+    }
+
+def generate_flow_with_error_handling(input_json, use_case=None):
+    logger.info(f"Starting flow generation with JSON: {json.dumps(input_json, indent=2)}")
+    
+    try:
+        # Validate nodes
+        if not input_json.get("nodes"):
+            try:
+                input_json = input_json["flow_json"]
+                if not input_json.get("nodes"):
+                    raise ValueError("No nodes provided")
+            except:
+                pass
+            raise ValueError("No nodes provided")
+        
+        for node in input_json["nodes"]:
+            if not isinstance(node, dict) or "id" not in node:
+                raise TypeError(f"Invalid node structure: {node}")
+        
+        logger.info("Nodes validated successfully")
+        
+        # Validate edges
+        if "edges" in input_json and input_json["edges"]:
+            logger.info("Validating edges")
+            
+            for i, edge in enumerate(input_json["edges"]):
+                logger.info(f"Validating edge {i+1}/{len(input_json['edges'])}: {edge}")
+                
+                if "source" not in edge or "target" not in edge:
+                    raise ValueError(f"Edge {i+1} is missing 'source' or 'target' field")
+                
+                # Check if source and target exist in nodes
+                source = edge["source"]
+                target = edge["target"]
+                
+                node_ids = [node["id"] for node in input_json["nodes"]]
+                if source not in node_ids or target not in node_ids:
+                    raise ValueError(f"Source or target node not found in nodes")
+                
+            logger.info("Edges validated successfully")
+        
+        # If we made it here, apply the use case if present
+        if use_case:
+            return generate_flow_from_use_case(input_json, use_case)
+        
+        return input_json
+    
+    except Exception as error:
+        logger.error(f"Flow generation failed with error: {str(error)}")
+        logger.error(traceback.format_exc())
+        
+        return {
+            "error": True,
+            "message": str(error),
+            "stack": traceback.format_exc()
+        }
+
+def generate_flow_from_use_case(flow_json, use_case):
+    logger.info(f"Generating flow for use case: {use_case}")
+    
+    modified_flow = json.loads(json.dumps(flow_json))
+    
+    if "translation" in use_case.lower():
+        logger.info("Detected translation use case")
+        if "OpenAI" not in [node["id"] for node in modified_flow["nodes"]]:
+            modified_flow["nodes"].append({"id": "OpenAI", "type": "OpenAI", "position": {"x": 200, "y": 0}, "data": {}})
+        
+        modified_flow["edges"].append({
+            "id": "edge-2",
+            "source": "TextInput",
+            "target": "OpenAI",
+            "type": "default",
+            "data": {}
+        })
+    
+    elif "summarization" in use_case.lower():
+        logger.info("Detected summarization use case")
+        if "OpenAI" not in [node["id"] for node in modified_flow["nodes"]]:
+            modified_flow["nodes"].append({"id": "OpenAI", "type": "OpenAI", "position": {"x": 200, "y": 0}, "data": {}})
+        
+        modified_flow["edges"].append({
+            "id": "edge-2",
+            "source": "TextInput",
+            "target": "OpenAI",
+            "type": "default",
+            "data": {}
+        })
+    else:
+        logger.info(f"Using default modification for use case: {use_case}")
+        modified_flow["useCase"] = use_case
+    
+    return modified_flow
+
+
+nodes = [
+    {"id": "TextInput", "type": "TextInput", "position": {"x": 0, "y": 0}, "data": {}},
+    {"id": "TextOutput", "type": "TextOutput", "position": {"x": 100, "y": 0}, "data": {}}
+]
+
+# Create edge with proper handles
+# The function now returns a complete edge object
+edge = generate_edge_handles(
+    source_node_id="TextInput", 
+    source_node_type="TextInput", 
+    target_node_id="TextOutput",
+    output_name="text",          # Output port name (defaults to "text")
+    output_types=["Message"],    # Output types this node produces
+    target_field_name="input_value",  # Input field name on target
+    target_field_type="str",     # Field type
+    input_types=["Message"]      # Types the target accepts
+)
+
+# Add custom id if needed (optional, function already generates an id)
+edge["id"] = "edge-1"  # Override the auto-generated ID if desired
+
+# Final response with the single edge
+trial4Json = {
+    "nodes": nodes,
+    "edges": [edge]
 }
 
 @app.route('/api/flows', methods=['GET'])
 def return_json():
-    return jsonify(trial3Json)
+    try:
+        use_case = request.args.get('use_case')
+        flow = generate_flow_with_error_handling(trial8Json, use_case)
+        # flow = trialAPIJson
+        return jsonify(flow)
+        
+    except Exception as e:
+        logger.error(f"Error in /api/flows endpoint: {str(e)}")
+        logger.error(traceback.format_exc())
+        
+        return jsonify({
+            "error": True,
+            "message": str(e),
+            "stack": traceback.format_exc()
+        }), 500
 
 if __name__ == '__main__':
     app.run(debug=True, port=8000)
