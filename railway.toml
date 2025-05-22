@@ -6,5 +6,4 @@ buildCommand = "pip install -r railway_requirements.txt"
 startCommand = "uvicorn singleModel:app --host 0.0.0.0 --port $PORT"
 healthcheckPath = "/"
 healthcheckTimeout = 100
-restartPolicyType = "on-failure"
 restartPolicyMaxRetries = 10 
