@@ -11,7 +11,7 @@ from typing import List, Dict, Any, Optional
 
 import chromadb
 from chromadb.config import Settings
-from chromadb import AsyncHttpClient
+from chromadb import HttpClient
 
 class VectorStore:
     """
@@ -22,13 +22,13 @@ class VectorStore:
         # Ensure port is int
         self.port = int(os.getenv("CHROMA_PORT", "8000"))
         self.collection_name = os.getenv("CHROMA_COLLECTION", "architect-docs")
-        self._async_client: Optional[AsyncHttpClient] = None
+        self._client: Optional[HttpClient] = None
         self._collection = None
 
     async def initialize(self):
-        """Initialize async client and collection using get_or_create_collection."""
+        """Initialize client and collection using get_or_create_collection."""
         try:
-            self._async_client = await AsyncHttpClient(
+            self._client = HttpClient(
                 host=self.host,
                 port=self.port,
                 settings=Settings(
@@ -36,8 +36,8 @@ class VectorStore:
                     chroma_client_auth_credentials=os.getenv("CHROMA_TOKEN", "")
                 )
             )
-            # Use get_or_create_collection (async) to avoid duplicate collections
-            self._collection = await self._async_client.get_or_create_collection(
+            # Use get_or_create_collection to avoid duplicate collections
+            self._collection = self._client.get_or_create_collection(
                 name=self.collection_name,
                 metadata={"hnsw:space": "cosine"}
             )
@@ -62,7 +62,7 @@ class VectorStore:
                 "doc_type": doc_type,
                 **(metadata or {})
             }
-            await self._collection.add(
+            self._collection.add(
                 ids=[chunk_id],
                 documents=[document],
                 metadatas=[meta]
@@ -86,7 +86,7 @@ class VectorStore:
             if content_type:
                 where_filter = {"content_type": content_type}
             
-            results = await self._collection.query(
+            results = self._collection.query(
                 query_texts=[query],
                 n_results=n_results,
                 where=where_filter
@@ -110,7 +110,7 @@ class VectorStore:
             if component_name:
                 where_filter["component"] = component_name
                 
-            results = await self._collection.query(
+            results = self._collection.query(
                 query_texts=["component template"],
                 n_results=n_results,
                 where=where_filter
