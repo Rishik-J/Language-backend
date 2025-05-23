@@ -23,6 +23,9 @@ class DesignResponse(BaseModel):
 # --- Initialize API clients ---
 # OpenAI client
 openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY", ""))
+# Log a warning if the API key looks like a placeholder
+if not os.getenv("OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY").startswith("your_"):
+    logging.warning("OpenAI API key appears to be missing or uses a placeholder. Check your environment variables.")
 
 # GROQ client
 groq_client = OpenAI(

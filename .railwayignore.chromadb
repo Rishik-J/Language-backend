@@ -1,0 +1,9 @@
+# Ignore everything except what's needed for ChromaDB
+/*
+
+# Include only the necessary files
+!Dockerfile.chromadb
+!railway.chromadb.toml
+!initialize_chromadb.py
+!requirements.txt
+!railway_requirements.txt 

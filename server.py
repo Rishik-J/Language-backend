@@ -315,7 +315,7 @@ complexFLow = {
       "type": "OpenAIEmbeddings",
       "position": { "x": 100, "y": 100 },
       "data": {
-        "description": "Embeds input text into high-dimensional vectors via OpenAI’s embeddings API.",
+        "description": "Embeds input text into high-dimensional vectors via OpenAI's embeddings API.",
         "inputs": ["text_documents"],
         "outputs": ["embedding_vectors"]
       }
@@ -644,4 +644,4 @@ def return_json():
         }), 500
 
 if __name__ == '__main__':
-    app.run(debug=True, port=8000)
+    app.run(debug=True, port=8002)

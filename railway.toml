@@ -1,9 +1,16 @@
 [build]
 builder = "nixpacks"
-buildCommand = "pip install -r railway_requirements.txt"
+buildCommand = "pip install -r requirements.txt"
 
 [deploy]
 startCommand = "uvicorn singleModel:app --host 0.0.0.0 --port $PORT"
-healthcheckPath = "/"
+healthcheckPath = "/health"
 healthcheckTimeout = 100
-restartPolicyMaxRetries = 10 
+restartPolicyType = "on_failure"
+
+[variables]
+CHROMA_HOST = "${CHROMADB_SERVICE_NAME}.railway.internal"
+CHROMA_PORT = "8000"
+CHROMA_COLLECTION = "architect-docs"
+COMPONENT_DOCS_DIR = "docs"
+COMPONENT_TEMPLATES_DIR = "component_categories" 

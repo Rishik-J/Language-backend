@@ -7,6 +7,7 @@ Chroma DB–based vector store with async support and metadata filtering.
 """
 import os
 import logging
+import asyncio
 from typing import List, Dict, Any, Optional
 
 import chromadb
@@ -27,24 +28,39 @@ class VectorStore:
 
     async def initialize(self):
         """Initialize client and collection using get_or_create_collection."""
-        try:
-            self._client = HttpClient(
-                host=self.host,
-                port=self.port,
-                settings=Settings(
-                    chroma_client_auth_provider="token",
-                    chroma_client_auth_credentials=os.getenv("CHROMA_TOKEN", "")
+        tries = 0
+        max_tries = 5
+        retry_delay = 3  # seconds
+        
+        while tries < max_tries:
+            try:
+                logging.info(f"Attempting to connect to ChromaDB at {self.host}:{self.port} (attempt {tries+1}/{max_tries})")
+                self._client = HttpClient(
+                    host=self.host,
+                    port=self.port,
+                    settings=Settings(
+                        chroma_client_auth_provider="token",
+                        chroma_client_auth_credentials=os.getenv("CHROMA_TOKEN", "")
+                    )
                 )
-            )
-            # Use get_or_create_collection to avoid duplicate collections
-            self._collection = self._client.get_or_create_collection(
-                name=self.collection_name,
-                metadata={"hnsw:space": "cosine"}
-            )
-            logging.info(f"Connected to Chroma server at {self.host}:{self.port}")
-        except Exception as e:
-            logging.error(f"Chroma connection failed: {e}")
-            raise
+                # Use get_or_create_collection to avoid duplicate collections
+                self._collection = self._client.get_or_create_collection(
+                    name=self.collection_name,
+                    metadata={"hnsw:space": "cosine"}
+                )
+                logging.info(f"Successfully connected to Chroma server at {self.host}:{self.port}")
+                break
+            except Exception as e:
+                tries += 1
+                if tries < max_tries:
+                    logging.warning(f"ChromaDB connection attempt {tries}/{max_tries} failed: {e}")
+                    await asyncio.sleep(retry_delay)
+                else:
+                    logging.error(f"All {max_tries} attempts to connect to ChromaDB failed: {e}")
+                    # Initialize with empty collection to prevent app crash
+                    self._collection = None
+                    # Don't raise exception, let the app continue with limited functionality
+                    logging.warning("Application will start without ChromaDB functionality")
 
     async def add_doc_chunk(self,
                             chunk_id: str,

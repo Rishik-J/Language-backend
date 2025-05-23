@@ -1,0 +1,15 @@
+flask
+flask-cors
+fastapi
+uvicorn
+pydantic
+openai
+python-dotenv
+requests
+chromadb
+numpy
+pandas
+scipy
+scikit-learn
+pillow
+tqdm 
